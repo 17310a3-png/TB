@@ -51,7 +51,7 @@ const REGIONS = {
   '桃園': {
     caseSheet: '1E1G4qnmS4-VVJaPwWoHXVuXlPadWl5DFZ6J_MhQwD-U',
     workSheet: '1G55jJSUY6eaAP1MtOBTm9xyiJY-NlI_CmjEq6FSHZX8',
-    caseTab: '案件追蹤表',
+    caseTab: '進度統計',
     weeklySheet: '1AtGwkhK2z_pbVzmXtP3NQuoR5l4lzkvaVgvy5BPY_fs',
   },
   '新竹': {
@@ -146,7 +146,7 @@ app.get('/api/meeting/:region', async (req, res) => {
           id: findCol(['項次', '編號', 'a+']),
           address: findCol(['地址', '建案', '基本資訊']),
           customer: findCol(['客戶', '姓名']),
-          contact: findCol(['接洽人員']),
+          contact: findCol(['接洽人員', '設計師']),
           fillMonth: findCol(['填單(月)']),
           fillDate: findCol(['填單日期']),
           caseType: findCol(['案件類型', '屬性']),
