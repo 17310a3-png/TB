@@ -6,6 +6,18 @@ const path = require('path');
 const app = express();
 app.use(cors());
 
+// 快取系統（5 分鐘）
+const CACHE_TTL = 5 * 60 * 1000;
+const cache = {};
+function getCache(key) {
+  const entry = cache[key];
+  if (entry && Date.now() - entry.time < CACHE_TTL) return entry.data;
+  return null;
+}
+function setCache(key, data) {
+  cache[key] = { data, time: Date.now() };
+}
+
 let sheetsClient = null;
 async function getSheets() {
   if (!sheetsClient) {
@@ -84,6 +96,9 @@ app.get('/api/meeting/:region', async (req, res) => {
     const region = decodeURIComponent(req.params.region);
     const config = REGIONS[region];
     if (!config) return res.json({ error: '地區不存在' });
+
+    const cached = getCache(`meeting_${region}`);
+    if (cached) return res.json(cached);
 
     const sheets = await getSheets();
     const result = { region };
@@ -385,6 +400,7 @@ app.get('/api/meeting/:region', async (req, res) => {
       console.error('週會額外資料錯誤:', e.message);
     }
 
+    setCache(`meeting_${region}`, result);
     res.json(result);
   } catch (err) {
     console.error('會議資料錯誤:', err.message);
@@ -395,6 +411,9 @@ app.get('/api/meeting/:region', async (req, res) => {
 // ===== 全區營運數據統計 =====
 app.get('/api/allregions', async (req, res) => {
   try {
+    const cached = getCache('allregions');
+    if (cached) return res.json(cached);
+
     const sheets = await getSheets();
     const currentMonth = new Date().getMonth() + 1;
     const allData = [];
@@ -466,7 +485,7 @@ app.get('/api/allregions', async (req, res) => {
     const totalMonth = allData.reduce((s, d) => s + d.monthRevenue, 0);
     const monthlyTarget = totalMilestone / 12;
 
-    res.json({
+    const responseData = {
       regions: allData,
       total: {
         milestone: totalMilestone,
@@ -476,7 +495,9 @@ app.get('/api/allregions', async (req, res) => {
         monthRate: monthlyTarget > 0 ? (totalMonth / monthlyTarget * 100).toFixed(1) + '%' : '0%',
         totalRate: (monthlyTarget * currentMonth) > 0 ? (totalActual / (monthlyTarget * currentMonth) * 100).toFixed(1) + '%' : '0%',
       },
-    });
+    };
+    setCache('allregions', responseData);
+    res.json(responseData);
   } catch (err) {
     console.error('全區統計錯誤:', err.message);
     res.status(500).json({ error: err.message });
