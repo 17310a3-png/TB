@@ -75,7 +75,16 @@ const TR = ({ children, onClick }) => <tr style={{ cursor: onClick ? 'pointer' :
 
 const ChartTip = ({ active, payload, label }) => {
   if (!active || !payload?.length) return null;
-  return <div style={{ ...font(600, 12), background: C.iron, color: '#fff', padding: '8px 14px', borderRadius: 3, border: `1px solid ${C.ironMid}` }}><div style={{ color: C.fog, fontSize: 10 }}>{label}</div><div style={{ color: C.gold, fontSize: 15, fontWeight: 800, marginTop: 2 }}>{payload[0].value}</div></div>;
+  return <div style={{ ...font(600, 12), background: C.iron, color: '#fff', padding: '10px 16px', borderRadius: 3, border: `1px solid ${C.ironMid}` }}>
+    <div style={{ color: C.fog, fontSize: 10, marginBottom: 4 }}>{label}</div>
+    {payload.map((p, i) => (
+      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
+        <div style={{ width: 8, height: 8, borderRadius: 2, background: p.fill || p.color || C.gold }} />
+        <span style={{ color: C.fog, fontSize: 11 }}>{p.name || p.dataKey}</span>
+        <span style={{ color: C.gold, fontSize: 14, fontWeight: 800, marginLeft: 'auto' }}>{p.value}</span>
+      </div>
+    ))}
+  </div>;
 };
 
 // ======= DASHBOARD VIEW =======
