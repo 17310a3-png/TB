@@ -84,7 +84,7 @@ function Dashboard({ data }) {
   const { regions, total } = data;
   const active = regions.filter(r => r.milestone > 0 || r.actual > 0);
   const barData = active.map(r => ({ name: r.region, 目標: r.milestone, 業績: r.actual }));
-  const rateData = active.map(r => ({ name: r.region, 達成率: parseFloat(r.totalRate) || 0 }));
+  const rateData = active.map(r => ({ name: r.region, 年度達成率: r.milestone > 0 ? parseFloat((r.actual / r.milestone * 100).toFixed(1)) : 0 }));
   return (
     <div style={fadeIn}>
       <div style={{ ...font(800, 28), color: C.iron, letterSpacing: '-0.02em', marginBottom: 4 }}>全區營運總覽</div>
@@ -111,13 +111,13 @@ function Dashboard({ data }) {
           </ResponsiveContainer>
         </div>
         <div style={{ flex: '1 1 300px', background: C.bone, borderRadius: 4, padding: 24 }}>
-          <div style={{ ...font(700, 11), letterSpacing: '0.08em', textTransform: 'uppercase', color: C.steel, marginBottom: 12 }}>達成率排名</div>
+          <div style={{ ...font(700, 11), letterSpacing: '0.08em', textTransform: 'uppercase', color: C.steel, marginBottom: 12 }}>年度達成率排名</div>
           <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={rateData.sort((a, b) => b.達成率 - a.達成率)} layout="vertical" margin={{ left: 5, right: 20 }}>
+            <BarChart data={rateData.sort((a, b) => b.年度達成率 - a.年度達成率)} layout="vertical" margin={{ left: 5, right: 20 }}>
               <XAxis type="number" domain={[0, 100]} tick={{ ...font(400, 10) }} unit="%" />
               <YAxis type="category" dataKey="name" tick={{ ...bodyFont(500, 12) }} width={50} />
               <Tooltip content={<ChartTip />} />
-              <Bar dataKey="達成率" radius={[0, 3, 3, 0]}>{rateData.map((e, i) => <Cell key={i} fill={e.達成率 >= 60 ? C.gold : e.達成率 >= 30 ? C.fog : C.ash} />)}</Bar>
+              <Bar dataKey="年度達成率" radius={[0, 3, 3, 0]}>{rateData.map((e, i) => <Cell key={i} fill={e.年度達成率 >= 60 ? C.gold : e.年度達成率 >= 30 ? C.fog : C.ash} />)}</Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -125,17 +125,20 @@ function Dashboard({ data }) {
 
       <div style={{ background: C.bone, borderRadius: 4, overflow: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr><TH>地區</TH><TH>年度目標</TH><TH>累積業績</TH><TH>月累積達成率</TH><TH>簽約率</TH><TH>當月業績</TH><TH>當月達成率</TH></tr></thead>
+          <thead><tr><TH>地區</TH><TH>年度目標</TH><TH>累積業績</TH><TH>年度達成率</TH><TH>月累積達成率</TH><TH>簽約率</TH><TH>當月業績</TH><TH>當月達成率</TH></tr></thead>
           <tbody>
             {active.map((r, i) => {
-              const rate = parseFloat(r.totalRate) || 0;
+              const yearRate = r.milestone > 0 ? (r.actual / r.milestone * 100).toFixed(1) : 0;
+              const monthRate = parseFloat(r.totalRate) || 0;
               return <TR key={i}><TD style={font(700, 14)}>{r.region}</TD><TD style={font(700, 14)}>{r.milestone}萬</TD><TD style={font(700, 14)}>{r.actual}萬</TD>
-                <TD><span style={{ ...font(800, 15), color: rate >= 60 ? C.moss : rate >= 30 ? C.darkGold : C.rust }}>{r.totalRate}</span></TD>
+                <TD><span style={{ ...font(800, 15), color: yearRate >= 50 ? C.moss : yearRate >= 25 ? C.darkGold : C.rust }}>{yearRate}%</span></TD>
+                <TD><span style={{ ...font(800, 15), color: monthRate >= 60 ? C.moss : monthRate >= 30 ? C.darkGold : C.rust }}>{r.totalRate}</span></TD>
                 <TD style={{ ...font(700, 14), color: C.darkGold }}>{r.signRate || '—'}</TD>
                 <TD style={font(600, 13)}>{r.monthRevenue}萬</TD>
                 <TD style={{ ...font(600, 13), color: C.steel }}>{r.monthRate}</TD></TR>;
             })}
             <tr style={{ background: C.paleGold }}><TD style={font(800, 14)}>合計</TD><TD style={font(800, 14)}>{total.milestone}萬</TD><TD style={font(800, 14)}>{total.actual}萬</TD>
+              <TD style={{ ...font(800, 16), color: C.darkGold }}>{total.milestone > 0 ? (total.actual / total.milestone * 100).toFixed(1) : 0}%</TD>
               <TD style={{ ...font(800, 16), color: C.darkGold }}>{total.totalRate}</TD><TD /><TD style={font(800, 14)}>{total.monthRevenue}萬</TD><TD style={{ ...font(800, 13), color: C.darkGold }}>{total.monthRate}</TD></tr>
           </tbody>
         </table>
