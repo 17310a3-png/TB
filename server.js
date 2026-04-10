@@ -146,7 +146,7 @@ app.get('/api/meeting/:region', async (req, res) => {
           id: findCol(['項次', '編號', 'a+']),
           address: findCol(['地址', '建案', '基本資訊']),
           customer: findCol(['客戶', '姓名']),
-          contact: findCol(['接洽人員', '設計師']),
+          contact: findCol(['接洽人員']),
           fillMonth: findCol(['填單(月)']),
           fillDate: findCol(['填單日期']),
           caseType: findCol(['案件類型', '屬性']),
