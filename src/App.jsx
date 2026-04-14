@@ -167,6 +167,9 @@ export default function App() {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(false);
   const [perfView, setPerfView] = useState('region');
+  const [notes, setNotes] = useState([]);
+  const [noteInput, setNoteInput] = useState({});   // { '客戶回饋': '', '廠商狀況': '', '支援項目': '' }
+  const [paymentRec, setPaymentRec] = useState({}); // { case_no: { invoice_amount, received_amount } }
 
   useEffect(() => {
     fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {});
@@ -175,9 +178,48 @@ export default function App() {
   useEffect(() => {
     if (view === 'meeting') {
       setLoading(true); setExpanded(null);
-      fetch(`/api/meeting/${encodeURIComponent(region)}`).then(r => r.json()).then(d => { setData(d); setLoading(false); }).catch(() => setLoading(false));
+      Promise.all([
+        fetch(`/api/meeting/${encodeURIComponent(region)}`).then(r => r.json()),
+        fetch(`/api/notes/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
+        fetch(`/api/paymentrecords/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
+      ]).then(([meetingData, notesData, paymentsData]) => {
+        setData(meetingData);
+        setNotes(Array.isArray(notesData) ? notesData : []);
+        const pm = {};
+        (Array.isArray(paymentsData) ? paymentsData : []).forEach(r => { pm[r.case_no] = r; });
+        setPaymentRec(pm);
+        setLoading(false);
+      }).catch(() => setLoading(false));
     }
   }, [region, view]);
+
+  const addNote = async (category, content) => {
+    if (!content.trim()) return;
+    const res = await fetch('/api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ region, category, content }) });
+    const created = await res.json();
+    if (Array.isArray(created) && created[0]) setNotes(prev => [...prev, created[0]]);
+    setNoteInput(prev => ({ ...prev, [category]: '' }));
+  };
+
+  const cycleStatus = async (note) => {
+    const next = { '未處理': '處理中', '處理中': '已處理', '已處理': '未處理' }[note.status] || '未處理';
+    await fetch(`/api/notes/${note.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: next }) });
+    setNotes(prev => prev.map(n => n.id === note.id ? { ...n, status: next } : n));
+  };
+
+  const deleteNote = async (id) => {
+    await fetch(`/api/notes/${id}`, { method: 'DELETE' });
+    setNotes(prev => prev.filter(n => n.id !== id));
+  };
+
+  const savePayment = async (caseNo, address, field, value) => {
+    const cur = paymentRec[caseNo] || {};
+    const updated = { ...cur, [field]: parseInt(value) || 0 };
+    setPaymentRec(prev => ({ ...prev, [caseNo]: updated }));
+    await fetch('/api/paymentrecords', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ region, case_no: caseNo, address, invoice_amount: updated.invoice_amount || 0, received_amount: updated.received_amount || 0 }) });
+  };
 
   const scrollTo = (id) => {
     if (id === 'dashboard') { setView('dashboard'); setActiveNav('dashboard'); return; }
@@ -333,30 +375,77 @@ export default function App() {
               <Block id="payment" num="03" title="當月請款進度" sub="設計業務部 · 工務服務部" gold>
                 {p.filter(x => ['施工中', '待驗收', '待開工'].includes(x.status)).length === 0 ? <div style={{ ...bodyFont(500, 13), padding: 24, textAlign: 'center', color: C.steel, background: C.stone, borderRadius: 4 }}>無請款資料</div> : (
                   <div style={{ overflow: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr>{['案號','狀態','地址','設計師','合約金額'].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
-                    <tbody>{p.filter(x => ['施工中', '待驗收', '待開工'].includes(x.status)).map((x, i) => <TR key={i}><TD style={{ ...font(700, 13), color: C.darkGold }}>{x.caseNo}</TD><TD><Badge status={x.status} /></TD><TD style={{ maxWidth: 220, lineHeight: 1.5 }}>{x.address}</TD><TD>{x.designer}</TD><TD style={font(800, 14)}>{x.contractAmount}</TD></TR>)}</tbody></table></div>
+                    <thead><tr>{['案號','狀態','地址','設計師','合約金額','請款金額(萬)','已收金額(萬)','未收金額(萬)'].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
+                    <tbody>{p.filter(x => ['施工中', '待驗收', '待開工'].includes(x.status)).map((x, i) => {
+                      const pr = paymentRec[x.caseNo] || {};
+                      const inv = pr.invoice_amount || 0;
+                      const rec = pr.received_amount || 0;
+                      const pending = inv - rec;
+                      return <TR key={i}>
+                        <TD style={{ ...font(700, 13), color: C.darkGold }}>{x.caseNo}</TD>
+                        <TD><Badge status={x.status} /></TD>
+                        <TD style={{ maxWidth: 180, lineHeight: 1.5 }}>{x.address}</TD>
+                        <TD>{x.designer}</TD>
+                        <TD style={font(800, 14)}>{x.contractAmount}</TD>
+                        <TD><input type="number" defaultValue={inv || ''} placeholder="0"
+                          onBlur={e => savePayment(x.caseNo, x.address, 'invoice_amount', e.target.value)}
+                          style={{ width: 70, ...font(600, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '4px 8px', background: C.bone }} /></TD>
+                        <TD><input type="number" defaultValue={rec || ''} placeholder="0"
+                          onBlur={e => savePayment(x.caseNo, x.address, 'received_amount', e.target.value)}
+                          style={{ width: 70, ...font(600, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '4px 8px', background: C.bone }} /></TD>
+                        <TD><span style={{ ...font(800, 14), color: pending > 0 ? C.rust : C.moss }}>{pending !== 0 ? pending : '—'}</span></TD>
+                      </TR>;
+                    })}</tbody></table></div>
                 )}
               </Block>
 
               {/* 04 客戶·廠商·支援 */}
-              <div id="feedback" style={{ display: 'flex', gap: 12, marginBottom: 32, flexWrap: 'wrap', scrollMarginTop: 64 }}>
-                {[{ t: '客戶回饋', n: '04-A' }, { t: '廠商狀況', n: '04-B' }, { t: '支援項目', n: '04-C' }].map(s => (
-                  <div key={s.t} style={{ flex: '1 1 260px', borderRadius: 4, overflow: 'hidden', background: C.bone }}>
-                    <div style={{ padding: '14px 20px', background: C.iron, display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <span style={{ ...font(600, 9), color: C.gold, opacity: 0.5, letterSpacing: '0.08em' }}>{s.n}</span>
-                      <span style={{ ...font(700, 13), color: '#fff' }}>{s.t}</span>
-                    </div>
-                    <div style={{ padding: '16px 20px', display: 'flex', gap: 8 }}>
-                      {['總量', '已處理', '處理中', '未處理'].map(item => (
-                        <div key={item} style={{ flex: 1, textAlign: 'center' }}>
-                          <div style={{ ...font(700, 8), letterSpacing: '0.08em', color: C.steel, textTransform: 'uppercase' }}>{item}</div>
-                          <div style={{ ...font(800, 20), color: C.iron, marginTop: 4 }}>0</div>
+              {(() => {
+                const NOTE_STATUS = { '未處理': { bg: C.rustLight, c: C.rust }, '處理中': { bg: C.emberLight, c: C.ember }, '已處理': { bg: C.mossLight, c: C.moss } };
+                const cats = [{ t: '客戶回饋', n: '04-A' }, { t: '廠商狀況', n: '04-B' }, { t: '支援項目', n: '04-C' }];
+                return (
+                  <div id="feedback" style={{ display: 'flex', gap: 12, marginBottom: 32, flexWrap: 'wrap', scrollMarginTop: 64 }}>
+                    {cats.map(s => {
+                      const catNotes = notes.filter(n => n.category === s.t);
+                      const done = catNotes.filter(n => n.status === '已處理').length;
+                      const inProg = catNotes.filter(n => n.status === '處理中').length;
+                      const todo = catNotes.filter(n => n.status === '未處理').length;
+                      return (
+                        <div key={s.t} style={{ flex: '1 1 280px', borderRadius: 4, overflow: 'hidden', background: C.bone }}>
+                          <div style={{ padding: '14px 20px', background: C.iron, display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <span style={{ ...font(600, 9), color: C.gold, opacity: 0.5, letterSpacing: '0.08em' }}>{s.n}</span>
+                            <span style={{ ...font(700, 13), color: '#fff', flex: 1 }}>{s.t}</span>
+                            <span style={{ ...font(700, 10), color: C.fog }}>{catNotes.length} 項</span>
+                          </div>
+                          <div style={{ padding: '12px 16px', display: 'flex', gap: 8, borderBottom: `1px solid ${C.ash}` }}>
+                            {[['總量', catNotes.length, C.iron], ['已處理', done, C.moss], ['處理中', inProg, C.ember], ['未處理', todo, C.rust]].map(([label, val, color]) => (
+                              <div key={label} style={{ flex: 1, textAlign: 'center' }}>
+                                <div style={{ ...font(700, 8), letterSpacing: '0.08em', color: C.steel, textTransform: 'uppercase' }}>{label}</div>
+                                <div style={{ ...font(800, 20), color, marginTop: 4 }}>{val}</div>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ padding: '10px 16px', maxHeight: 220, overflowY: 'auto' }}>
+                            {catNotes.length === 0 && <div style={{ ...bodyFont(400, 12), color: C.fog, padding: '8px 0' }}>尚無紀錄</div>}
+                            {catNotes.map(n => (
+                              <div key={n.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0', borderBottom: `1px solid ${C.stone}` }}>
+                                <button onClick={() => cycleStatus(n)} style={{ ...font(700, 9), padding: '2px 7px', borderRadius: 2, border: 'none', cursor: 'pointer', whiteSpace: 'nowrap', background: (NOTE_STATUS[n.status] || NOTE_STATUS['未處理']).bg, color: (NOTE_STATUS[n.status] || NOTE_STATUS['未處理']).c }}>{n.status}</button>
+                                <span style={{ ...bodyFont(400, 12), color: C.iron, flex: 1, lineHeight: 1.6 }}>{n.content}</span>
+                                <button onClick={() => deleteNote(n.id)} style={{ background: 'none', border: 'none', color: C.fog, cursor: 'pointer', fontSize: 14, padding: '0 2px', lineHeight: 1 }}>×</button>
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ padding: '10px 16px', display: 'flex', gap: 8, borderTop: `1px solid ${C.ash}` }}>
+                            <textarea rows={1} value={noteInput[s.t] || ''} onChange={e => setNoteInput(prev => ({ ...prev, [s.t]: e.target.value }))}
+                              placeholder="新增紀錄..." style={{ flex: 1, ...bodyFont(400, 12), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '6px 10px', resize: 'none', background: C.stone }} />
+                            <button onClick={() => addNote(s.t, noteInput[s.t] || '')} style={{ ...font(700, 12), padding: '6px 14px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron }}>+</button>
+                          </div>
                         </div>
-                      ))}
-                    </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
+                );
+              })()}
 
               {/* 05 預計簽約 */}
               <Block id="expected" num="05" title="預計簽約" sub="設計業務部">

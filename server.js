@@ -34,6 +34,35 @@ function isOverdue(baseStr, workDays) {
   return today > due;
 }
 
+// Supabase helper
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://zklwnhxrqxspmjovohvt.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprbHduaHhycXhzcG1qb3ZvaHZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MDEwMTQsImV4cCI6MjA4OTQ3NzAxNH0.mHjDLw63847lcNJFTdN4e_nIUU5Uftd6bHap1fNr2a0';
+const supaHeaders = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
+
+async function supaGet(table, params = '') {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${params}`, { headers: supaHeaders });
+  return res.json();
+}
+async function supaUpsert(table, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: { ...supaHeaders, Prefer: 'resolution=merge-duplicates,return=representation' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+async function supaPatch(table, id, body) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { ...supaHeaders, Prefer: 'return=representation' },
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}
+async function supaDelete(table, id) {
+  await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, { method: 'DELETE', headers: supaHeaders });
+}
+
 // 快取系統（5 分鐘）
 const CACHE_TTL = 5 * 60 * 1000;
 const cache = {};
@@ -455,68 +484,62 @@ app.get('/api/allregions', async (req, res) => {
 
     const sheets = await getSheets();
     const currentMonth = new Date().getMonth() + 1;
-    const allData = [];
 
-    for (const [regionName, config] of Object.entries(REGIONS)) {
+    const allData = await Promise.all(Object.entries(REGIONS).map(async ([regionName, config]) => {
       const entry = { region: regionName, milestone: 0, actual: 0, signRate: '', monthRevenue: 0 };
 
-      // 年度目標 from 週會紀錄表
-      if (config.weeklySheet) {
-        try {
-          const meetingRes = await sheets.spreadsheets.values.get({
-            spreadsheetId: config.weeklySheet,
-            range: "'會議表單'!A1:R210",
-          });
-          const allRows = meetingRes.data.values || [];
-          const targetIdx = allRows.findIndex(r => r[0] && r[0].includes('年度') && r[0].includes('目標'));
-          if (targetIdx >= 0) {
-            entry.milestone = parseInt(allRows[targetIdx + 1]?.[2]) || 0;
-          }
-        } catch (e) {}
-      }
+      await Promise.all([
+        // 年度目標 from 週會紀錄表
+        config.weeklySheet ? (async () => {
+          try {
+            const meetingRes = await sheets.spreadsheets.values.get({
+              spreadsheetId: config.weeklySheet,
+              range: "'會議表單'!A1:R210",
+            });
+            const allRows = meetingRes.data.values || [];
+            const targetIdx = allRows.findIndex(r => r[0] && r[0].includes('年度') && r[0].includes('目標'));
+            if (targetIdx >= 0) entry.milestone = parseInt(allRows[targetIdx + 1]?.[2]) || 0;
+          } catch (e) {}
+        })() : Promise.resolve(),
 
-      // 業績 + 簽約率 from 案件追蹤表
-      if (config.caseSheet) {
-        try {
-          const perfRes = await sheets.spreadsheets.values.get({
-            spreadsheetId: config.caseSheet,
-            range: "'業績表'!A1:Z20",
-          });
-          const perfRows = perfRes.data.values || [];
-          const totalRow = perfRows.find(r => r[0] === '合計');
-          if (totalRow) {
-            entry.actual = parseInt(totalRow[5]) || 0;
-            entry.monthRevenue = parseInt(totalRow[3]) || 0;
-            // 月營業額
-            entry.monthlyRevenue = [];
-            const months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
-            for (let m = 0; m < 12; m++) {
-              entry.monthlyRevenue.push({ month: months[m], amount: parseInt(totalRow[7 + m * 2]) || 0 });
+        // 業績 from 案件追蹤表
+        config.caseSheet ? (async () => {
+          try {
+            const perfRes = await sheets.spreadsheets.values.get({
+              spreadsheetId: config.caseSheet,
+              range: "'業績表'!A1:Z20",
+            });
+            const perfRows = perfRes.data.values || [];
+            const totalRow = perfRows.find(r => r[0] === '合計');
+            if (totalRow) {
+              entry.actual = parseInt(totalRow[5]) || 0;
+              entry.monthRevenue = parseInt(totalRow[3]) || 0;
+              const months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
+              entry.monthlyRevenue = months.map((month, m) => ({ month, amount: parseInt(totalRow[7 + m * 2]) || 0 }));
             }
-          }
-        } catch (e) {}
+          } catch (e) {}
 
-        // 簽約率
-        try {
-          const panelRes = await sheets.spreadsheets.values.get({
-            spreadsheetId: config.caseSheet,
-            range: "'面板資料'!A12:Z17",
-          });
-          const pRows = panelRes.data.values || [];
-          const nameRow = pRows.find(r => r && r[0] === '姓名') || [];
-          const rateRow = pRows.find(r => r && r[0] === '簽約率') || [];
-          const sumIdx = nameRow.findIndex((v, i) => i > 0 && v === '總和');
-          if (sumIdx >= 0) entry.signRate = rateRow[sumIdx] || '';
-        } catch (e) {}
-      }
+          // 簽約率
+          try {
+            const panelRes = await sheets.spreadsheets.values.get({
+              spreadsheetId: config.caseSheet,
+              range: "'面板資料'!A12:Z17",
+            });
+            const pRows = panelRes.data.values || [];
+            const nameRow = pRows.find(r => r && r[0] === '姓名') || [];
+            const rateRow = pRows.find(r => r && r[0] === '簽約率') || [];
+            const sumIdx = nameRow.findIndex((v, i) => i > 0 && v === '總和');
+            if (sumIdx >= 0) entry.signRate = rateRow[sumIdx] || '';
+          } catch (e) {}
+        })() : Promise.resolve(),
+      ]);
 
       const monthlyTarget = entry.milestone / 12;
       entry.monthRate = monthlyTarget > 0 ? (entry.monthRevenue / monthlyTarget * 100).toFixed(1) + '%' : '0%';
       entry.totalRate = (monthlyTarget * currentMonth) > 0 ? (entry.actual / (monthlyTarget * currentMonth) * 100).toFixed(1) + '%' : '0%';
       entry.diff = entry.milestone - entry.actual;
-
-      allData.push(entry);
-    }
+      return entry;
+    }));
 
     // 全區合計
     const totalMilestone = allData.reduce((s, d) => s + d.milestone, 0);
@@ -541,6 +564,61 @@ app.get('/api/allregions', async (req, res) => {
     console.error('全區統計錯誤:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+
+// ===== 週會筆記 API（04 區塊：客戶回饋/廠商狀況/支援項目）=====
+app.use(express.json());
+
+app.get('/api/notes/:region', async (req, res) => {
+  try {
+    const region = decodeURIComponent(req.params.region);
+    const data = await supaGet('tb_weekly_notes', `?region=eq.${encodeURIComponent(region)}&order=created_at.asc`);
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/notes', async (req, res) => {
+  try {
+    const { region, category, content, status = '未處理', meeting_date } = req.body;
+    const data = await supaUpsert('tb_weekly_notes', { region, category, content, status, meeting_date: meeting_date || new Date().toISOString().slice(0, 10) });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/notes/:id', async (req, res) => {
+  try {
+    const data = await supaPatch('tb_weekly_notes', req.params.id, req.body);
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/notes/:id', async (req, res) => {
+  try {
+    await supaDelete('tb_weekly_notes', req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== 請款記錄 API（03 區塊）=====
+app.get('/api/paymentrecords/:region', async (req, res) => {
+  try {
+    const region = decodeURIComponent(req.params.region);
+    const data = await supaGet('tb_payment_records', `?region=eq.${encodeURIComponent(region)}`);
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/paymentrecords', async (req, res) => {
+  try {
+    const { region, case_no, address, invoice_amount, received_amount, note } = req.body;
+    const data = await supaUpsert('tb_payment_records', {
+      region, case_no, address,
+      invoice_amount: parseInt(invoice_amount) || 0,
+      received_amount: parseInt(received_amount) || 0,
+      note, updated_at: new Date().toISOString(),
+    });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // 靜態檔案服務（前端 build 產物）
