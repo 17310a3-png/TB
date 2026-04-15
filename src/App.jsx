@@ -87,6 +87,147 @@ const ChartTip = ({ active, payload, label }) => {
   </div>;
 };
 
+// ======= ACCOUNTS PAGE =======
+function AccountsPage({ auth }) {
+  const [users, setUsers] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ username: '', name: '', password: '', role: 'region', region: '' });
+  const [pwEdit, setPwEdit] = useState({}); // { id: newPw }
+  const [error, setError] = useState('');
+
+  const load = () => fetch('/api/admin/users').then(r => r.json()).then(setUsers).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  const addUser = async (e) => {
+    e.preventDefault();
+    if (!form.username.trim() || !form.name.trim() || !form.password) { setError('請填寫所有必填欄位'); return; }
+    if (form.role === 'region' && !form.region) { setError('請選擇區域'); return; }
+    setError(''); setBusy(true);
+    const res = await fetch('/api/admin/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...form, region: form.role === 'admin' ? null : form.region }) });
+    setBusy(false);
+    if (res.ok) { setForm({ username: '', name: '', password: '', role: 'region', region: '' }); load(); }
+    else { const d = await res.json(); setError(d.error || '新增失敗'); }
+  };
+
+  const savePassword = async (id) => {
+    const pw = pwEdit[id]; if (!pw) return;
+    await fetch(`/api/admin/users/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
+    setPwEdit(prev => { const n = { ...prev }; delete n[id]; return n; });
+    load();
+  };
+
+  const deleteUser = async (id, username) => {
+    if (username === 'admin' || id === auth.id) return;
+    if (!window.confirm(`確定刪除 ${username}？`)) return;
+    await fetch(`/api/admin/users/${id}`, { method: 'DELETE' });
+    load();
+  };
+
+  const ROLE_STYLE = { admin: { bg: C.paleGold, c: C.darkGold }, region: { bg: C.skyLight, c: C.sky } };
+  const roleLabel = (r) => r === 'admin' ? '總部管理員' : '區域帳號';
+
+  return (
+    <div style={fadeIn}>
+      <div style={{ ...font(800, 26), color: C.iron, letterSpacing: '-0.02em', marginBottom: 4 }}>帳號管理</div>
+      <div style={{ ...bodyFont(500, 13), color: C.steel, marginBottom: 24 }}>新增或刪除系統帳號 · 僅總部管理員可存取</div>
+
+      {/* 現有帳號列表 */}
+      <div style={{ background: C.bone, borderRadius: 4, overflow: 'hidden', marginBottom: 24 }}>
+        <div style={{ padding: '14px 20px', background: C.iron, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ ...font(700, 13), color: '#fff' }}>現有帳號</span>
+          <span style={{ ...font(600, 11), color: C.fog }}>{users.length} 筆</span>
+        </div>
+        <div style={{ overflow: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr>{['帳號', '姓名', '角色', '區域', '修改密碼', ''].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
+            <tbody>
+              {users.map(u => (
+                <TR key={u.id}>
+                  <TD style={font(700, 13)}>{u.username}</TD>
+                  <TD>{u.name}</TD>
+                  <TD>
+                    <span style={{ ...font(700, 10), padding: '3px 10px', borderRadius: 2, background: (ROLE_STYLE[u.role] || ROLE_STYLE.region).bg, color: (ROLE_STYLE[u.role] || ROLE_STYLE.region).c }}>
+                      {roleLabel(u.role)}
+                    </span>
+                  </TD>
+                  <TD style={{ color: C.steel }}>{u.region || '—'}</TD>
+                  <TD>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input type="password" placeholder="新密碼" value={pwEdit[u.id] || ''} onChange={e => setPwEdit(prev => ({ ...prev, [u.id]: e.target.value }))}
+                        style={{ width: 110, ...bodyFont(400, 12), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '4px 8px', background: C.stone }} />
+                      {pwEdit[u.id] && (
+                        <button onClick={() => savePassword(u.id)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron }}>確認</button>
+                      )}
+                    </div>
+                  </TD>
+                  <TD>
+                    {u.username !== 'admin' && u.id !== auth.id ? (
+                      <button onClick={() => deleteUser(u.id, u.username)} style={{ background: 'none', border: 'none', color: C.rust, cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1, fontWeight: 700 }}>×</button>
+                    ) : (
+                      <span style={{ ...font(500, 10), color: C.fog }}>—</span>
+                    )}
+                  </TD>
+                </TR>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 新增帳號 */}
+      <div style={{ background: C.bone, borderRadius: 4, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', background: C.ironLight }}>
+          <span style={{ ...font(700, 13), color: '#fff' }}>新增帳號</span>
+        </div>
+        <form onSubmit={addUser} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {error && <div style={{ ...bodyFont(500, 13), color: C.rust, background: '#ffdad6', padding: '10px 14px', borderRadius: 4 }}>{error}</div>}
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 160px' }}>
+              <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>帳號 *</div>
+              <input value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value }))} placeholder="英文小寫"
+                style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '8px 12px', background: C.stone }} />
+            </div>
+            <div style={{ flex: '1 1 160px' }}>
+              <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>姓名 *</div>
+              <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="顯示名稱"
+                style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '8px 12px', background: C.stone }} />
+            </div>
+            <div style={{ flex: '1 1 160px' }}>
+              <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>密碼 *</div>
+              <input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder="登入密碼"
+                style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '8px 12px', background: C.stone }} />
+            </div>
+            <div style={{ flex: '1 1 120px' }}>
+              <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>角色</div>
+              <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value, region: '' }))}
+                style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '8px 12px', background: C.stone }}>
+                <option value="region">區域帳號</option>
+                <option value="admin">總部管理員</option>
+              </select>
+            </div>
+            {form.role === 'region' && (
+              <div style={{ flex: '1 1 120px' }}>
+                <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>區域 *</div>
+                <select value={form.region} onChange={e => setForm(p => ({ ...p, region: e.target.value }))}
+                  style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '8px 12px', background: C.stone }}>
+                  <option value="">請選擇</option>
+                  {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+          <div>
+            <button type="submit" disabled={busy} style={{ ...font(700, 14), padding: '10px 28px', borderRadius: 3, border: 'none', cursor: busy ? 'wait' : 'pointer', background: busy ? C.fog : C.gold, color: C.iron }}>
+              {busy ? '新增中...' : '+ 新增帳號'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ======= LOGIN PAGE =======
 function LoginPage({ onLogin }) {
   const [user, setUser] = useState('');
@@ -403,6 +544,9 @@ export default function App() {
               <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
               <span style={{ ...bodyFont(500, 11), color: 'rgba(255,255,255,0.25)' }}>{new Date().toLocaleDateString('zh-TW', { month: 'long', day: 'numeric' })}</span>
               <button onClick={logout} style={{ ...font(600, 10), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ironMid}`, cursor: 'pointer', background: 'none', color: 'rgba(255,255,255,0.35)', marginLeft: 4 }}>{auth.name} · 登出</button>
+              {isAdmin && (
+                <button onClick={() => setView('accounts')} title="帳號管理" style={{ ...font(600, 14), padding: '4px 8px', borderRadius: 3, border: `1px solid ${view === 'accounts' ? C.gold : C.ironMid}`, cursor: 'pointer', background: view === 'accounts' ? 'rgba(249,185,27,0.15)' : 'none', color: view === 'accounts' ? C.gold : 'rgba(255,255,255,0.4)', marginLeft: 2 }}>⚙</button>
+              )}
             </div>
           )}
         </div>
@@ -445,7 +589,7 @@ export default function App() {
 
         {/* ===== MAIN ===== */}
         <main style={{ flex: 1, padding: isMobile ? '16px 12px' : '28px 32px', paddingBottom: isMobile ? 76 : undefined, maxWidth: 1200, overflowX: 'hidden' }}>
-          {view === 'dashboard' ? <Dashboard data={allData} /> : loading ? (
+          {view === 'dashboard' ? <Dashboard data={allData} /> : view === 'accounts' ? <AccountsPage auth={auth} /> : loading ? (
             <div style={{ ...bodyFont(500, 14), textAlign: 'center', padding: 80, color: C.steel }}>載入中...</div>
           ) : (
             <>

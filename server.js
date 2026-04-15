@@ -657,27 +657,53 @@ app.delete('/api/expected/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ===== 帳號登入 API =====
-const USERS = {
-  'admin':    { password: 'tb@2026',   role: 'admin',  name: '總部' },
-  'taipei':   { password: 'taipei',    role: 'region', region: '台北', name: '台北' },
-  'taichung': { password: 'taichung',  role: 'region', region: '台中', name: '台中' },
-  'taoyuan':  { password: 'taoyuan',   role: 'region', region: '桃園', name: '桃園' },
-  'hsinchu':  { password: 'hsinchu',   role: 'region', region: '新竹', name: '新竹' },
-  'guishan':  { password: 'guishan',   role: 'region', region: '龜山', name: '龜山' },
-  'frame':    { password: 'frame',     role: 'region', region: '框框', name: '框框' },
-  'banqiao':  { password: 'banqiao',   role: 'region', region: '板橋', name: '板橋' },
-  'shuinan':  { password: 'shuinan',   role: 'region', region: '水湳', name: '水湳' },
-};
+// ===== 帳號登入 API（從 Supabase tb_users 驗證）=====
+app.post('/api/login', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+    const users = await supaGet('tb_users', `?username=eq.${encodeURIComponent(String(username || '').toLowerCase())}`);
+    if (!Array.isArray(users) || !users[0] || users[0].password !== password) {
+      return res.status(401).json({ ok: false, message: '帳號或密碼錯誤' });
+    }
+    const { password: _pw, ...info } = users[0];
+    res.json({ ok: true, ...info });
+  } catch (e) { res.status(500).json({ ok: false, message: '伺服器錯誤' }); }
+});
 
-app.post('/api/login', (req, res) => {
-  const { username, password } = req.body;
-  const user = USERS[String(username || '').toLowerCase()];
-  if (!user || user.password !== password) {
-    return res.status(401).json({ ok: false, message: '帳號或密碼錯誤' });
-  }
-  const { password: _pw, ...info } = user;
-  res.json({ ok: true, ...info });
+// ===== 帳號管理 API（admin only，前端已做權限保護）=====
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const data = await supaGet('tb_users', '?select=id,username,role,region,name,created_at&order=created_at.asc');
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e) { res.json([]); }
+});
+
+app.post('/api/admin/users', async (req, res) => {
+  try {
+    const { username, password, role, region, name } = req.body;
+    const data = await supaInsert('tb_users', {
+      username: String(username || '').toLowerCase(), password, role, region: region || null, name,
+    });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/users/:id', async (req, res) => {
+  try {
+    const updates = {};
+    if (req.body.password) updates.password = req.body.password;
+    if (req.body.name) updates.name = req.body.name;
+    if (req.body.region !== undefined) updates.region = req.body.region;
+    const data = await supaPatch('tb_users', req.params.id, updates);
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/users/:id', async (req, res) => {
+  try {
+    await supaDelete('tb_users', req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // 靜態檔案服務（前端 build 產物）
