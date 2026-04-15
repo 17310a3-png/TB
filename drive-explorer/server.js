@@ -627,7 +627,20 @@ document.getElementById('tree').addEventListener('click', function(e) {
   }
 });
 
-function showPreview(item) {
+// Revoke old blob URL to free memory
+function revokeBlob(frame) {
+  if (frame._blobUrl) { URL.revokeObjectURL(frame._blobUrl); frame._blobUrl = null; }
+}
+
+// File types that can be shown inline in the browser
+function isInlinePreviewable(mime) {
+  return mime.includes('pdf') ||
+         mime.startsWith('image/') ||
+         mime.startsWith('text/') ||
+         mime.startsWith('application/vnd.google-apps.'); // Google native → exported as PDF by server
+}
+
+async function showPreview(item) {
   const panel = document.getElementById('detailPanel');
   const preview = document.getElementById('previewPanel');
   const frame = document.getElementById('previewFrame');
@@ -645,11 +658,38 @@ function showPreview(item) {
   const sel = document.querySelector('.tree-node[data-id="'+item.id+'"]');
   if (sel) sel.querySelector('.tree-row').classList.add('selected');
 
-  // Use server-side proxy — no Google login needed, inline preview
+  revokeBlob(frame);
+  frame.src = 'about:blank';
   hint.style.display = 'none';
+
+  if (!isInlinePreviewable(item.mimeType)) {
+    // Can't preview inline — show hint with Drive link
+    loading.classList.remove('show');
+    hint.innerHTML = '<div style="font-size:32px;opacity:0.1;font-weight:700;font-family:var(--font-display)">?</div>'
+      + '<div style="font-family:var(--font-display);font-size:12px;font-weight:600;color:var(--on-surface-variant);letter-spacing:0.08em;text-transform:uppercase;opacity:0.6;margin-top:8px;">無法在此預覽</div>'
+      + '<div style="font-family:var(--font-body);font-size:12px;color:var(--on-surface-variant);opacity:0.4;text-align:center;max-width:220px;margin-top:4px;">'
+      + item.name.split('.').pop().toUpperCase() + ' 格式不支援內嵌預覽</div>'
+      + '<a href="'+driveUrl(item)+'" target="_blank" style="margin-top:16px;background:var(--primary-container);color:var(--on-primary-fixed);border:none;border-radius:var(--radius);padding:8px 18px;font-family:var(--font-display);font-size:11px;font-weight:600;cursor:pointer;letter-spacing:0.04em;text-transform:uppercase;text-decoration:none;">在 Google Drive 開啟</a>';
+    hint.style.display = 'flex';
+    return;
+  }
+
+  // Fetch via server proxy → blob URL → iframe (no download dialog, no Google login)
   loading.classList.add('show');
-  frame.src = '/api/file/' + item.id;
-  frame.onload = () => loading.classList.remove('show');
+  try {
+    const resp = await fetch('/api/file/' + item.id);
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    frame._blobUrl = url;
+    frame.src = url;
+    frame.onload = () => loading.classList.remove('show');
+  } catch (err) {
+    loading.classList.remove('show');
+    hint.innerHTML = '<div style="font-family:var(--font-display);font-size:12px;font-weight:600;color:var(--error);letter-spacing:0.08em;text-transform:uppercase;">載入失敗</div>'
+      + '<div style="font-family:var(--font-body);font-size:12px;color:var(--on-surface-variant);opacity:0.5;margin-top:4px;">'+err.message+'</div>';
+    hint.style.display = 'flex';
+  }
 }
 
 function closePreview() {
