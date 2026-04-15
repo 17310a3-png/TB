@@ -35,8 +35,8 @@ function isOverdue(baseStr, workDays) {
 }
 
 // Supabase helper
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://zklwnhxrqxspmjovohvt.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InprbHduaHhycXhzcG1qb3ZvaHZ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5MDEwMTQsImV4cCI6MjA4OTQ3NzAxNH0.mHjDLw63847lcNJFTdN4e_nIUU5Uftd6bHap1fNr2a0';
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://obgobetnlecbmypvfnsq.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9iZ29iZXRubGVjYm15cHZmbnNxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyMTgwOTEsImV4cCI6MjA5MTc5NDA5MX0.u1sxdWPtGcyGJyKmFIIrmPWVVJ6fZr36DB2sU7rhHRU';
 const supaHeaders = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' };
 
 async function supaGet(table, params = '') {
