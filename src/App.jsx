@@ -428,6 +428,7 @@ export default function App() {
   const [notes, setNotes] = useState([]);
   const [noteInput, setNoteInput] = useState({});   // { '客戶回饋': '', '廠商狀況': '', '支援項目': '' }
   const [paymentRec, setPaymentRec] = useState({}); // { case_no: { invoice_amount, received_amount } }
+  const [paymentEdit, setPaymentEdit] = useState({}); // 未儲存的草稿值
   const [expectedSigns, setExpectedSigns] = useState([]);
   const [signInput, setSignInput] = useState({ address: '', amount: '', expected_date: '', note: '' });
   const [projectNotes, setProjectNotes] = useState({}); // { case_no: { note, is_abnormal } }
@@ -453,9 +454,11 @@ export default function App() {
         setPaymentRec(pm);
         setExpectedSigns(Array.isArray(expectedData) ? expectedData : []);
         setSignInput({ address: '', amount: '', expected_date: '', note: '' });
-        const pn = {};
-        (Array.isArray(projNotesData) ? projNotesData : []).forEach(r => { pn[r.case_no] = r; });
-        setProjectNotes(pn);
+        // localStorage 為主，Supabase API 為補（表格建好後自動同步）
+        const lsPn = JSON.parse(localStorage.getItem(`tb_pn_${region}`) || '{}');
+        const apiPn = {};
+        (Array.isArray(projNotesData) ? projNotesData : []).forEach(r => { apiPn[r.case_no] = r; });
+        setProjectNotes({ ...lsPn, ...apiPn }); // API 資料優先覆蓋
         setLoading(false);
       }).catch(() => setLoading(false));
     }
@@ -495,20 +498,33 @@ export default function App() {
     setExpectedSigns(prev => prev.filter(s => s.id !== id));
   };
 
-  const savePayment = async (caseNo, address, field, value) => {
-    const cur = paymentRec[caseNo] || {};
-    const updated = { ...cur, [field]: parseInt(value) || 0 };
-    setPaymentRec(prev => ({ ...prev, [caseNo]: updated }));
-    await fetch('/api/paymentrecords', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ region, case_no: caseNo, address, invoice_amount: updated.invoice_amount || 0, received_amount: updated.received_amount || 0 }) });
+  const setPaymentDraft = (caseNo, field, value) => {
+    setPaymentEdit(prev => ({ ...prev, [caseNo]: { ...(prev[caseNo] || {}), [field]: value } }));
   };
 
-  const saveProjectNote = async (caseNo, field, value) => {
+  const savePayment = async (caseNo, address) => {
+    const draft = paymentEdit[caseNo] || {};
+    const saved = paymentRec[caseNo] || {};
+    const inv = parseInt(draft.invoice_amount !== undefined ? draft.invoice_amount : saved.invoice_amount) || 0;
+    const rec = parseInt(draft.received_amount !== undefined ? draft.received_amount : saved.received_amount) || 0;
+    setPaymentRec(prev => ({ ...prev, [caseNo]: { invoice_amount: inv, received_amount: rec } }));
+    setPaymentEdit(prev => { const n = { ...prev }; delete n[caseNo]; return n; });
+    await fetch('/api/paymentrecords', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ region, case_no: caseNo, address, invoice_amount: inv, received_amount: rec }) });
+  };
+
+  const saveProjectNote = (caseNo, field, value) => {
     const cur = projectNotes[caseNo] || {};
     const updated = { ...cur, [field]: value };
-    setProjectNotes(prev => ({ ...prev, [caseNo]: updated }));
-    await fetch('/api/projectnotes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ region, case_no: caseNo, note: updated.note || '', is_abnormal: !!updated.is_abnormal }) });
+    setProjectNotes(prev => {
+      const next = { ...prev, [caseNo]: updated };
+      localStorage.setItem(`tb_pn_${region}`, JSON.stringify(next));
+      return next;
+    });
+    // 背景嘗試同步 Supabase（表格不存在時靜默失敗）
+    fetch('/api/projectnotes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ region, case_no: caseNo, note: updated.note || '', is_abnormal: !!updated.is_abnormal })
+    }).catch(() => {});
   };
 
   const scrollTo = (id) => {
@@ -768,25 +784,39 @@ export default function App() {
               <Block id="payment" num="03" title="當月請款進度" sub="設計業務部 · 工務服務部" gold>
                 {p.filter(x => ['施工中', '待驗收', '待開工'].includes(x.status)).length === 0 ? <div style={{ ...bodyFont(500, 13), padding: 24, textAlign: 'center', color: C.steel, background: C.stone, borderRadius: 4 }}>無請款資料</div> : (
                   <div style={{ overflow: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr>{['案號','狀態','地址','設計師','合約金額','請款金額(萬)','已收金額(萬)','未收金額(萬)'].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
+                    <thead><tr>{['案號','狀態','地址','設計師','合約金額','請款金額(萬)','已收金額(萬)','未收金額(萬)',''].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
                     <tbody>{p.filter(x => ['施工中', '待驗收', '待開工'].includes(x.status)).map((x, i) => {
                       const pr = paymentRec[x.caseNo] || {};
-                      const inv = pr.invoice_amount || 0;
-                      const rec = pr.received_amount || 0;
-                      const pending = inv - rec;
+                      const draft = paymentEdit[x.caseNo];
+                      const invVal = draft?.invoice_amount !== undefined ? draft.invoice_amount : (pr.invoice_amount || '');
+                      const recVal = draft?.received_amount !== undefined ? draft.received_amount : (pr.received_amount || '');
+                      const inv = parseInt(invVal) || 0;
+                      const rec = parseInt(recVal) || 0;
+                      const pendingAmt = inv - rec;
+                      const isDirty = !!draft;
                       return <TR key={i}>
                         <TD style={{ ...font(700, 13), color: C.darkGold }}>{x.caseNo}</TD>
                         <TD><Badge status={x.status} /></TD>
                         <TD style={{ maxWidth: 180, lineHeight: 1.5 }}>{x.address}</TD>
                         <TD>{x.designer}</TD>
                         <TD style={font(800, 14)}>{x.contractAmount}</TD>
-                        <TD><input type="number" defaultValue={inv || ''} placeholder="0"
-                          onBlur={e => savePayment(x.caseNo, x.address, 'invoice_amount', e.target.value)}
-                          style={{ width: 70, ...font(600, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '4px 8px', background: C.bone }} /></TD>
-                        <TD><input type="number" defaultValue={rec || ''} placeholder="0"
-                          onBlur={e => savePayment(x.caseNo, x.address, 'received_amount', e.target.value)}
-                          style={{ width: 70, ...font(600, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '4px 8px', background: C.bone }} /></TD>
-                        <TD><span style={{ ...font(800, 14), color: pending > 0 ? C.rust : C.moss }}>{pending !== 0 ? pending : '—'}</span></TD>
+                        <TD>
+                          <input type="number" value={invVal} placeholder="0"
+                            onChange={e => setPaymentDraft(x.caseNo, 'invoice_amount', e.target.value)}
+                            style={{ width: 70, ...font(600, 13), border: `1px solid ${isDirty ? C.gold : C.ash}`, borderRadius: 3, padding: '4px 8px', background: isDirty ? C.warmCream : C.bone }} />
+                        </TD>
+                        <TD>
+                          <input type="number" value={recVal} placeholder="0"
+                            onChange={e => setPaymentDraft(x.caseNo, 'received_amount', e.target.value)}
+                            style={{ width: 70, ...font(600, 13), border: `1px solid ${isDirty ? C.gold : C.ash}`, borderRadius: 3, padding: '4px 8px', background: isDirty ? C.warmCream : C.bone }} />
+                        </TD>
+                        <TD><span style={{ ...font(800, 14), color: pendingAmt > 0 ? C.rust : pendingAmt < 0 ? C.ember : C.moss }}>{pendingAmt !== 0 ? pendingAmt : '—'}</span></TD>
+                        <TD>
+                          {isDirty
+                            ? <button onClick={() => savePayment(x.caseNo, x.address)} style={{ ...font(700, 11), padding: '4px 12px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron, whiteSpace: 'nowrap' }}>儲存</button>
+                            : <span style={{ ...font(500, 11), color: C.fog }}>已存</span>
+                          }
+                        </TD>
                       </TR>;
                     })}</tbody></table></div>
                 )}
