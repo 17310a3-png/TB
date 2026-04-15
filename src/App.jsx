@@ -848,7 +848,7 @@ export default function App() {
                             const contractStatus = get('contract_status', '時間未到');
                             const additionalStatus = get('additional_status', '時間未到');
                             const selStyle = (val) => ({ ...font(600, 11), border: `1px solid ${isDirty ? C.gold : C.ash}`, borderRadius: 3, padding: '4px 6px', background: val === '已收款' ? C.mossLight : val === '收款異常' ? C.rustLight : C.bone, color: val === '已收款' ? C.moss : val === '收款異常' ? C.rust : C.steel, cursor: 'pointer' });
-                            const inputStyle = { width: 110, ...font(600, 13), border: `1px solid ${isDirty ? C.gold : C.ash}`, borderRadius: 3, padding: '4px 8px', background: isDirty ? C.warmCream : C.bone };
+                            const inputStyle = { width: 150, ...font(600, 13), border: `1px solid ${isDirty ? C.gold : C.ash}`, borderRadius: 3, padding: '4px 8px', background: isDirty ? C.warmCream : C.bone };
                             return <TR key={i}>
                               <TD style={{ ...font(700, 13), color: C.darkGold }}>{x.caseNo}</TD>
                               <TD><Badge status={x.status} /></TD>
