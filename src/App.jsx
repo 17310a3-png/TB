@@ -505,12 +505,18 @@ export default function App() {
   const savePayment = async (caseNo, address) => {
     const draft = paymentEdit[caseNo] || {};
     const saved = paymentRec[caseNo] || {};
-    const inv = parseInt(draft.invoice_amount !== undefined ? draft.invoice_amount : saved.invoice_amount) || 0;
-    const rec = parseInt(draft.received_amount !== undefined ? draft.received_amount : saved.received_amount) || 0;
-    setPaymentRec(prev => ({ ...prev, [caseNo]: { invoice_amount: inv, received_amount: rec } }));
+    const get = (field, fallback) => draft[field] !== undefined ? draft[field] : (saved[field] !== undefined ? saved[field] : fallback);
+    const merged = {
+      contract_amount: parseInt(get('contract_amount', 0)) || 0,
+      contract_status: get('contract_status', '時間未到'),
+      additional_amount: parseInt(get('additional_amount', 0)) || 0,
+      additional_status: get('additional_status', '時間未到'),
+      abnormal_note: get('abnormal_note', ''),
+    };
+    setPaymentRec(prev => ({ ...prev, [caseNo]: { ...(prev[caseNo] || {}), ...merged } }));
     setPaymentEdit(prev => { const n = { ...prev }; delete n[caseNo]; return n; });
     await fetch('/api/paymentrecords', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ region, case_no: caseNo, address, invoice_amount: inv, received_amount: rec }) });
+      body: JSON.stringify({ region, case_no: caseNo, address, ...merged }) });
   };
 
   const saveProjectNote = (caseNo, field, value) => {
@@ -782,44 +788,61 @@ export default function App() {
 
               {/* 03 請款 */}
               <Block id="payment" num="03" title="當月請款進度" sub="設計業務部 · 工務服務部" gold>
-                {p.filter(x => ['施工中', '待驗收', '待開工'].includes(x.status)).length === 0 ? <div style={{ ...bodyFont(500, 13), padding: 24, textAlign: 'center', color: C.steel, background: C.stone, borderRadius: 4 }}>無請款資料</div> : (
-                  <div style={{ overflow: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr>{['案號','狀態','地址','設計師','合約金額','請款金額(萬)','已收金額(萬)','未收金額(萬)',''].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
-                    <tbody>{p.filter(x => ['施工中', '待驗收', '待開工'].includes(x.status)).map((x, i) => {
-                      const pr = paymentRec[x.caseNo] || {};
-                      const draft = paymentEdit[x.caseNo];
-                      const invVal = draft?.invoice_amount !== undefined ? draft.invoice_amount : (pr.invoice_amount || '');
-                      const recVal = draft?.received_amount !== undefined ? draft.received_amount : (pr.received_amount || '');
-                      const inv = parseInt(invVal) || 0;
-                      const rec = parseInt(recVal) || 0;
-                      const pendingAmt = inv - rec;
-                      const isDirty = !!draft;
-                      return <TR key={i}>
-                        <TD style={{ ...font(700, 13), color: C.darkGold }}>{x.caseNo}</TD>
-                        <TD><Badge status={x.status} /></TD>
-                        <TD style={{ maxWidth: 180, lineHeight: 1.5 }}>{x.address}</TD>
-                        <TD>{x.designer}</TD>
-                        <TD style={font(800, 14)}>{x.contractAmount}</TD>
-                        <TD>
-                          <input type="number" value={invVal} placeholder="0"
-                            onChange={e => setPaymentDraft(x.caseNo, 'invoice_amount', e.target.value)}
-                            style={{ width: 70, ...font(600, 13), border: `1px solid ${isDirty ? C.gold : C.ash}`, borderRadius: 3, padding: '4px 8px', background: isDirty ? C.warmCream : C.bone }} />
-                        </TD>
-                        <TD>
-                          <input type="number" value={recVal} placeholder="0"
-                            onChange={e => setPaymentDraft(x.caseNo, 'received_amount', e.target.value)}
-                            style={{ width: 70, ...font(600, 13), border: `1px solid ${isDirty ? C.gold : C.ash}`, borderRadius: 3, padding: '4px 8px', background: isDirty ? C.warmCream : C.bone }} />
-                        </TD>
-                        <TD><span style={{ ...font(800, 14), color: pendingAmt > 0 ? C.rust : pendingAmt < 0 ? C.ember : C.moss }}>{pendingAmt !== 0 ? pendingAmt : '—'}</span></TD>
-                        <TD>
-                          {isDirty
-                            ? <button onClick={() => savePayment(x.caseNo, x.address)} style={{ ...font(700, 11), padding: '4px 12px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron, whiteSpace: 'nowrap' }}>儲存</button>
-                            : <span style={{ ...font(500, 11), color: C.fog }}>已存</span>
-                          }
-                        </TD>
-                      </TR>;
-                    })}</tbody></table></div>
-                )}
+                {(() => {
+                  const paymentCases = p.filter(x => ['施工中', '待驗收', '待開工'].includes(x.status));
+                  if (paymentCases.length === 0) return <div style={{ ...bodyFont(500, 13), padding: 24, textAlign: 'center', color: C.steel, background: C.stone, borderRadius: 4 }}>無請款資料</div>;
+                  let abnormalCount = 0, totalReceivable = 0, totalReceived = 0;
+                  paymentCases.forEach(x => {
+                    const pr = paymentRec[x.caseNo] || {};
+                    const cAmt = parseInt(pr.contract_amount) || 0;
+                    const aAmt = parseInt(pr.additional_amount) || 0;
+                    totalReceivable += cAmt + aAmt;
+                    if (pr.contract_status === '已收款') totalReceived += cAmt;
+                    if (pr.additional_status === '已收款') totalReceived += aAmt;
+                    if (pr.contract_status === '收款異常' || pr.additional_status === '收款異常') abnormalCount++;
+                  });
+                  const STATUS_OPTS = ['已收款', '時間未到', '收款異常'];
+                  return (
+                    <>
+                      <div style={{ display: 'flex', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+                        {[
+                          { label: '異常數量', value: abnormalCount, highlight: abnormalCount > 0 },
+                          { label: '應收款金額', value: totalReceivable.toLocaleString() },
+                          { label: '已收款金額', value: totalReceived.toLocaleString() },
+                          { label: '未收款金額', value: (totalReceivable - totalReceived).toLocaleString(), highlight: totalReceivable > totalReceived },
+                        ].map(m => <Metric key={m.label} {...m} />)}
+                      </div>
+                      <div style={{ overflow: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead><tr>{['案號','狀態','地址','設計師','合約金額','請款金額(合約)','是否收款','請款金額(追加)','是否收款','款異常摘要',''].map((h,i) => <TH key={i}>{h}</TH>)}</tr></thead>
+                          <tbody>{paymentCases.map((x, i) => {
+                            const pr = paymentRec[x.caseNo] || {};
+                            const draft = paymentEdit[x.caseNo] || {};
+                            const isDirty = Object.keys(draft).length > 0;
+                            const get = (field, fallback = '') => draft[field] !== undefined ? draft[field] : (pr[field] !== undefined ? pr[field] : fallback);
+                            const contractStatus = get('contract_status', '時間未到');
+                            const additionalStatus = get('additional_status', '時間未到');
+                            const selStyle = (val) => ({ ...font(600, 11), border: `1px solid ${isDirty ? C.gold : C.ash}`, borderRadius: 3, padding: '4px 6px', background: val === '已收款' ? C.mossLight : val === '收款異常' ? C.rustLight : C.bone, color: val === '已收款' ? C.moss : val === '收款異常' ? C.rust : C.steel, cursor: 'pointer' });
+                            const inputStyle = { width: 72, ...font(600, 13), border: `1px solid ${isDirty ? C.gold : C.ash}`, borderRadius: 3, padding: '4px 8px', background: isDirty ? C.warmCream : C.bone };
+                            return <TR key={i}>
+                              <TD style={{ ...font(700, 13), color: C.darkGold }}>{x.caseNo}</TD>
+                              <TD><Badge status={x.status} /></TD>
+                              <TD style={{ maxWidth: 160, lineHeight: 1.5 }}>{x.address}</TD>
+                              <TD>{x.designer}</TD>
+                              <TD style={font(800, 14)}>{x.contractAmount}</TD>
+                              <TD><input type="number" value={get('contract_amount', '')} placeholder="0" onChange={e => setPaymentDraft(x.caseNo, 'contract_amount', e.target.value)} style={inputStyle} /></TD>
+                              <TD><select value={contractStatus} onChange={e => setPaymentDraft(x.caseNo, 'contract_status', e.target.value)} style={selStyle(contractStatus)}>{STATUS_OPTS.map(o => <option key={o} value={o}>{o}</option>)}</select></TD>
+                              <TD><input type="number" value={get('additional_amount', '')} placeholder="0" onChange={e => setPaymentDraft(x.caseNo, 'additional_amount', e.target.value)} style={inputStyle} /></TD>
+                              <TD><select value={additionalStatus} onChange={e => setPaymentDraft(x.caseNo, 'additional_status', e.target.value)} style={selStyle(additionalStatus)}>{STATUS_OPTS.map(o => <option key={o} value={o}>{o}</option>)}</select></TD>
+                              <TD><input type="text" value={get('abnormal_note', '')} placeholder="異常原因" onChange={e => setPaymentDraft(x.caseNo, 'abnormal_note', e.target.value)} style={{ width: 110, ...font(600, 12), border: `1px solid ${isDirty ? C.gold : C.ash}`, borderRadius: 3, padding: '4px 8px', background: isDirty ? C.warmCream : C.bone }} /></TD>
+                              <TD>{isDirty ? <button onClick={() => savePayment(x.caseNo, x.address)} style={{ ...font(700, 11), padding: '4px 12px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron, whiteSpace: 'nowrap' }}>儲存</button> : <span style={{ ...font(500, 11), color: C.fog }}>已存</span>}</TD>
+                            </TR>;
+                          })}</tbody>
+                        </table>
+                      </div>
+                    </>
+                  );
+                })()}
               </Block>
 
               {/* 04 客戶·廠商·支援 */}

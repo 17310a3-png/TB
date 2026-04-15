@@ -642,12 +642,15 @@ app.get('/api/paymentrecords/:region', async (req, res) => {
 
 app.post('/api/paymentrecords', async (req, res) => {
   try {
-    const { region, case_no, address, invoice_amount, received_amount, note } = req.body;
+    const { region, case_no, address, contract_amount, contract_status, additional_amount, additional_status, abnormal_note } = req.body;
     const data = await supaUpsert('tb_payment_records', {
       region, case_no, address,
-      invoice_amount: parseInt(invoice_amount) || 0,
-      received_amount: parseInt(received_amount) || 0,
-      note, updated_at: new Date().toISOString(),
+      contract_amount: parseInt(contract_amount) || 0,
+      contract_status: contract_status || '時間未到',
+      additional_amount: parseInt(additional_amount) || 0,
+      additional_status: additional_status || '時間未到',
+      abnormal_note: abnormal_note || '',
+      updated_at: new Date().toISOString(),
     });
     res.json(data);
   } catch (e) { res.status(500).json({ error: e.message }); }
