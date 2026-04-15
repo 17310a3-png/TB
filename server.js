@@ -694,6 +694,7 @@ app.patch('/api/admin/users/:id', async (req, res) => {
     const updates = {};
     if (req.body.password) updates.password = req.body.password;
     if (req.body.name) updates.name = req.body.name;
+    if (req.body.role) updates.role = req.body.role;
     if (req.body.region !== undefined) updates.region = req.body.region;
     const data = await supaPatch('tb_users', req.params.id, updates);
     res.json(data);

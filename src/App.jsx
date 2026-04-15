@@ -88,12 +88,36 @@ const ChartTip = ({ active, payload, label }) => {
 };
 
 // ======= ACCOUNTS PAGE =======
+// region 以逗號分隔字串存放，e.g. "台北,台中,桃園"
+const parseRegions = (str) => str ? String(str).split(',').map(s => s.trim()).filter(Boolean) : [];
+const joinRegions = (arr) => arr.join(',');
+
+function RegionCheckboxes({ selected, onChange }) {
+  const toggle = (r) => onChange(selected.includes(r) ? selected.filter(x => x !== r) : [...selected, r]);
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+      {REGIONS.map(r => {
+        const on = selected.includes(r);
+        return (
+          <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+            ...bodyFont(on ? 700 : 400, 12), padding: '4px 10px', borderRadius: 3,
+            background: on ? C.gold : C.stone, color: on ? C.iron : C.steel,
+            border: `1px solid ${on ? C.gold : C.ash}`, userSelect: 'none' }}>
+            <input type="checkbox" checked={on} onChange={() => toggle(r)} style={{ display: 'none' }} />{r}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 function AccountsPage({ auth }) {
   const [users, setUsers] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [form, setForm] = useState({ username: '', name: '', password: '', role: 'region', region: '' });
-  const [pwEdit, setPwEdit] = useState({}); // { id: newPw }
+  const [form, setForm] = useState({ username: '', name: '', password: '', role: 'region', regions: [] });
   const [error, setError] = useState('');
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', password: '', role: 'region', regions: [] });
 
   const load = () => fetch('/api/admin/users').then(r => r.json()).then(setUsers).catch(() => {});
   useEffect(() => { load(); }, []);
@@ -101,19 +125,27 @@ function AccountsPage({ auth }) {
   const addUser = async (e) => {
     e.preventDefault();
     if (!form.username.trim() || !form.name.trim() || !form.password) { setError('請填寫所有必填欄位'); return; }
-    if (form.role === 'region' && !form.region) { setError('請選擇區域'); return; }
+    if (form.role === 'region' && form.regions.length === 0) { setError('請至少選擇一個區域'); return; }
     setError(''); setBusy(true);
     const res = await fetch('/api/admin/users', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...form, region: form.role === 'admin' ? null : form.region }) });
+      body: JSON.stringify({ username: form.username.trim().toLowerCase(), name: form.name.trim(),
+        password: form.password, role: form.role, region: form.role === 'admin' ? null : joinRegions(form.regions) }) });
     setBusy(false);
-    if (res.ok) { setForm({ username: '', name: '', password: '', role: 'region', region: '' }); load(); }
+    if (res.ok) { setForm({ username: '', name: '', password: '', role: 'region', regions: [] }); load(); }
     else { const d = await res.json(); setError(d.error || '新增失敗'); }
   };
 
-  const savePassword = async (id) => {
-    const pw = pwEdit[id]; if (!pw) return;
-    await fetch(`/api/admin/users/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw }) });
-    setPwEdit(prev => { const n = { ...prev }; delete n[id]; return n; });
+  const startEdit = (u) => {
+    setEditId(u.id);
+    setEditForm({ name: u.name, password: '', role: u.role, regions: parseRegions(u.region) });
+  };
+
+  const saveEdit = async () => {
+    const updates = { name: editForm.name, role: editForm.role,
+      region: editForm.role === 'admin' ? null : joinRegions(editForm.regions) };
+    if (editForm.password) updates.password = editForm.password;
+    await fetch(`/api/admin/users/${editId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) });
+    setEditId(null);
     load();
   };
 
@@ -140,35 +172,73 @@ function AccountsPage({ auth }) {
         </div>
         <div style={{ overflow: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr>{['帳號', '姓名', '角色', '區域', '修改密碼', ''].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
+            <thead><tr>{['帳號', '姓名', '角色', '可看區域', '操作'].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
             <tbody>
               {users.map(u => (
-                <TR key={u.id}>
-                  <TD style={font(700, 13)}>{u.username}</TD>
-                  <TD>{u.name}</TD>
-                  <TD>
-                    <span style={{ ...font(700, 10), padding: '3px 10px', borderRadius: 2, background: (ROLE_STYLE[u.role] || ROLE_STYLE.region).bg, color: (ROLE_STYLE[u.role] || ROLE_STYLE.region).c }}>
-                      {roleLabel(u.role)}
-                    </span>
-                  </TD>
-                  <TD style={{ color: C.steel }}>{u.region || '—'}</TD>
-                  <TD>
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <input type="password" placeholder="新密碼" value={pwEdit[u.id] || ''} onChange={e => setPwEdit(prev => ({ ...prev, [u.id]: e.target.value }))}
-                        style={{ width: 110, ...bodyFont(400, 12), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '4px 8px', background: C.stone }} />
-                      {pwEdit[u.id] && (
-                        <button onClick={() => savePassword(u.id)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron }}>確認</button>
-                      )}
-                    </div>
-                  </TD>
-                  <TD>
-                    {u.username !== 'admin' && u.id !== auth.id ? (
-                      <button onClick={() => deleteUser(u.id, u.username)} style={{ background: 'none', border: 'none', color: C.rust, cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1, fontWeight: 700 }}>×</button>
-                    ) : (
-                      <span style={{ ...font(500, 10), color: C.fog }}>—</span>
-                    )}
-                  </TD>
-                </TR>
+                <React.Fragment key={u.id}>
+                  <TR>
+                    <TD style={font(700, 13)}>{u.username}</TD>
+                    <TD>{u.name}</TD>
+                    <TD>
+                      <span style={{ ...font(700, 10), padding: '3px 10px', borderRadius: 2, background: (ROLE_STYLE[u.role] || ROLE_STYLE.region).bg, color: (ROLE_STYLE[u.role] || ROLE_STYLE.region).c }}>
+                        {roleLabel(u.role)}
+                      </span>
+                    </TD>
+                    <TD style={{ color: C.steel }}>
+                      {u.role === 'admin' ? <span style={{ color: C.fog }}>全區</span>
+                        : parseRegions(u.region).map(r => (
+                          <span key={r} style={{ ...font(600, 10), padding: '2px 7px', borderRadius: 2, background: C.skyLight, color: C.sky, marginRight: 4, display: 'inline-block', marginBottom: 2 }}>{r}</span>
+                        ))}
+                    </TD>
+                    <TD>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <button onClick={() => editId === u.id ? setEditId(null) : startEdit(u)}
+                          style={{ ...font(600, 11), padding: '4px 12px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: editId === u.id ? C.ironLight : C.stone, color: editId === u.id ? '#fff' : C.iron }}>
+                          {editId === u.id ? '收起' : '編輯'}
+                        </button>
+                        {u.username !== 'admin' && u.id !== auth.id && (
+                          <button onClick={() => deleteUser(u.id, u.username)} style={{ background: 'none', border: 'none', color: C.rust, cursor: 'pointer', fontSize: 16, padding: '0 4px', lineHeight: 1, fontWeight: 700 }}>×</button>
+                        )}
+                      </div>
+                    </TD>
+                  </TR>
+                  {editId === u.id && (
+                    <tr>
+                      <td colSpan={5} style={{ background: C.warmCream, padding: '16px 20px', borderBottom: `1px solid ${C.ash}` }}>
+                        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                          <div style={{ flex: '1 1 140px' }}>
+                            <div style={{ ...font(700, 9), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>姓名</div>
+                            <input value={editForm.name} onChange={e => setEditForm(p => ({ ...p, name: e.target.value }))}
+                              style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '6px 10px', background: C.bone }} />
+                          </div>
+                          <div style={{ flex: '1 1 120px' }}>
+                            <div style={{ ...font(700, 9), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>新密碼（留空不改）</div>
+                            <input type="password" value={editForm.password} onChange={e => setEditForm(p => ({ ...p, password: e.target.value }))} placeholder="不修改請留空"
+                              style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '6px 10px', background: C.bone }} />
+                          </div>
+                          <div style={{ flex: '1 1 120px' }}>
+                            <div style={{ ...font(700, 9), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>角色</div>
+                            <select value={editForm.role} onChange={e => setEditForm(p => ({ ...p, role: e.target.value, regions: [] }))}
+                              style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '6px 10px', background: C.bone }}>
+                              <option value="region">區域帳號</option>
+                              <option value="admin">總部管理員</option>
+                            </select>
+                          </div>
+                          {editForm.role === 'region' && (
+                            <div style={{ flex: '2 1 240px' }}>
+                              <div style={{ ...font(700, 9), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>可看區域（複選）</div>
+                              <RegionCheckboxes selected={editForm.regions} onChange={regions => setEditForm(p => ({ ...p, regions }))} />
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end', paddingBottom: 2 }}>
+                            <button onClick={saveEdit} style={{ ...font(700, 12), padding: '7px 20px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron }}>儲存</button>
+                            <button onClick={() => setEditId(null)} style={{ ...font(600, 12), padding: '7px 14px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.stone, color: C.steel }}>取消</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
             </tbody>
           </table>
@@ -183,40 +253,36 @@ function AccountsPage({ auth }) {
         <form onSubmit={addUser} style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
           {error && <div style={{ ...bodyFont(500, 13), color: C.rust, background: '#ffdad6', padding: '10px 14px', borderRadius: 4 }}>{error}</div>}
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 160px' }}>
+            <div style={{ flex: '1 1 150px' }}>
               <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>帳號 *</div>
               <input value={form.username} onChange={e => setForm(p => ({ ...p, username: e.target.value }))} placeholder="英文小寫"
                 style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '8px 12px', background: C.stone }} />
             </div>
-            <div style={{ flex: '1 1 160px' }}>
+            <div style={{ flex: '1 1 150px' }}>
               <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>姓名 *</div>
               <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="顯示名稱"
                 style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '8px 12px', background: C.stone }} />
             </div>
-            <div style={{ flex: '1 1 160px' }}>
+            <div style={{ flex: '1 1 150px' }}>
               <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>密碼 *</div>
               <input type="password" value={form.password} onChange={e => setForm(p => ({ ...p, password: e.target.value }))} placeholder="登入密碼"
                 style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '8px 12px', background: C.stone }} />
             </div>
-            <div style={{ flex: '1 1 120px' }}>
+            <div style={{ flex: '0 1 120px' }}>
               <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>角色</div>
-              <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value, region: '' }))}
+              <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value, regions: [] }))}
                 style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '8px 12px', background: C.stone }}>
                 <option value="region">區域帳號</option>
                 <option value="admin">總部管理員</option>
               </select>
             </div>
-            {form.role === 'region' && (
-              <div style={{ flex: '1 1 120px' }}>
-                <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>區域 *</div>
-                <select value={form.region} onChange={e => setForm(p => ({ ...p, region: e.target.value }))}
-                  style={{ width: '100%', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '8px 12px', background: C.stone }}>
-                  <option value="">請選擇</option>
-                  {REGIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </div>
-            )}
           </div>
+          {form.role === 'region' && (
+            <div>
+              <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>可看區域 *（複選）</div>
+              <RegionCheckboxes selected={form.regions} onChange={regions => setForm(p => ({ ...p, regions }))} />
+            </div>
+          )}
           <div>
             <button type="submit" disabled={busy} style={{ ...font(700, 14), padding: '10px 28px', borderRadius: 3, border: 'none', cursor: busy ? 'wait' : 'pointer', background: busy ? C.fog : C.gold, color: C.iron }}>
               {busy ? '新增中...' : '+ 新增帳號'}
@@ -457,7 +523,8 @@ export default function App() {
   // 區域帳號：自動切到該區並進入週會視圖
   useEffect(() => {
     if (auth?.role === 'region' && auth.region) {
-      setRegion(auth.region);
+      const first = parseRegions(auth.region)[0] || REGIONS[0];
+      setRegion(first);
       setView('meeting');
       setActiveNav('cases');
     }
@@ -486,7 +553,8 @@ export default function App() {
 
   const sideW = collapsed ? 52 : 170;
   const isAdmin = auth?.role === 'admin';
-  const allowedRegions = isAdmin ? REGIONS : REGIONS.filter(r => r === auth?.region);
+  const userRegions = parseRegions(auth?.region);
+  const allowedRegions = isAdmin ? REGIONS : REGIONS.filter(r => userRegions.includes(r));
 
   if (!auth) return <LoginPage onLogin={login} />;
 
