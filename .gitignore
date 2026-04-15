@@ -13,3 +13,8 @@
 !server.js
 !src/
 !src/**
+
+# Drive Explorer
+!drive工具/
+!drive工具/drive-explorer/
+!drive工具/drive-explorer/**
