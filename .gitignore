@@ -1,9 +1,15 @@
-node_modules/
-key/
-*.log
-.claude/
-.playwright-mcp/
-UI UX 參考資料/
-drive工具/
-會計工具/
-dev腳本/
+# 預設忽略所有東西
+*
+.*
+
+# 只允許週會系統需要的檔案
+!.gitignore
+!Dockerfile
+!zbpack.json
+!package.json
+!package-lock.json
+!vite.config.js
+!index.html
+!server.js
+!src/
+!src/**
