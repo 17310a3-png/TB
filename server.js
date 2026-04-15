@@ -621,6 +621,34 @@ app.post('/api/paymentrecords', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== 預計簽約 API（05 區塊）=====
+app.get('/api/expected/:region', async (req, res) => {
+  try {
+    const region = decodeURIComponent(req.params.region);
+    const data = await supaGet('tb_expected_signs', `?region=eq.${encodeURIComponent(region)}&order=created_at.asc`);
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e) { res.json([]); }
+});
+
+app.post('/api/expected', async (req, res) => {
+  try {
+    const { region, address, amount, expected_date, note } = req.body;
+    const data = await supaUpsert('tb_expected_signs', {
+      region, address: address || '',
+      amount: amount || '', expected_date: expected_date || '', note: note || '',
+      meeting_date: new Date().toISOString().slice(0, 10),
+    });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/expected/:id', async (req, res) => {
+  try {
+    await supaDelete('tb_expected_signs', req.params.id);
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 靜態檔案服務（前端 build 產物）
 app.use(express.static(path.join(__dirname, 'dist')));
 app.get('/{*any}', (req, res) => {

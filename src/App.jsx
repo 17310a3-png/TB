@@ -171,6 +171,8 @@ export default function App() {
   const [notes, setNotes] = useState([]);
   const [noteInput, setNoteInput] = useState({});   // { '客戶回饋': '', '廠商狀況': '', '支援項目': '' }
   const [paymentRec, setPaymentRec] = useState({}); // { case_no: { invoice_amount, received_amount } }
+  const [expectedSigns, setExpectedSigns] = useState([]);
+  const [signInput, setSignInput] = useState({ address: '', amount: '', expected_date: '', note: '' });
 
   useEffect(() => {
     fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {});
@@ -183,12 +185,15 @@ export default function App() {
         fetch(`/api/meeting/${encodeURIComponent(region)}`).then(r => r.json()),
         fetch(`/api/notes/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
         fetch(`/api/paymentrecords/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
-      ]).then(([meetingData, notesData, paymentsData]) => {
+        fetch(`/api/expected/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
+      ]).then(([meetingData, notesData, paymentsData, expectedData]) => {
         setData(meetingData);
         setNotes(Array.isArray(notesData) ? notesData : []);
         const pm = {};
         (Array.isArray(paymentsData) ? paymentsData : []).forEach(r => { pm[r.case_no] = r; });
         setPaymentRec(pm);
+        setExpectedSigns(Array.isArray(expectedData) ? expectedData : []);
+        setSignInput({ address: '', amount: '', expected_date: '', note: '' });
         setLoading(false);
       }).catch(() => setLoading(false));
     }
@@ -212,6 +217,20 @@ export default function App() {
   const deleteNote = async (id) => {
     await fetch(`/api/notes/${id}`, { method: 'DELETE' });
     setNotes(prev => prev.filter(n => n.id !== id));
+  };
+
+  const addExpected = async () => {
+    if (!signInput.address.trim()) return;
+    const res = await fetch('/api/expected', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ region, ...signInput }) });
+    const created = await res.json();
+    if (Array.isArray(created) && created[0]) setExpectedSigns(prev => [...prev, created[0]]);
+    setSignInput({ address: '', amount: '', expected_date: '', note: '' });
+  };
+
+  const deleteExpected = async (id) => {
+    await fetch(`/api/expected/${id}`, { method: 'DELETE' });
+    setExpectedSigns(prev => prev.filter(s => s.id !== id));
   };
 
   const savePayment = async (caseNo, address, field, value) => {
@@ -474,9 +493,52 @@ export default function App() {
 
               {/* 05 預計簽約 */}
               <Block id="expected" num="05" title="預計簽約" sub="設計業務部">
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <Metric label="預計數量" value={data?.expectedSign?.count || '0件'} />
-                  <Metric label="預計金額" value={data?.expectedSign?.amount || '0萬'} highlight />
+                {/* 統計指標 */}
+                <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+                  <Metric label="預計件數" value={`${expectedSigns.length}件`} />
+                  <Metric label="合計金額" value={`${expectedSigns.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0)}萬`} highlight />
+                </div>
+
+                {/* 清單 */}
+                {expectedSigns.length > 0 && (
+                  <div style={{ overflow: 'auto', marginBottom: 16 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead><tr>{['#', '工程地址', '報價金額(萬)', '預計簽約日', '備註', ''].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
+                      <tbody>
+                        {expectedSigns.map((s, i) => (
+                          <TR key={s.id}>
+                            <TD style={font(700, 13)}>{i + 1}</TD>
+                            <TD style={{ maxWidth: 220, lineHeight: 1.5 }}>{s.address}</TD>
+                            <TD style={{ ...font(800, 15), color: C.darkGold }}>{s.amount ? `${s.amount}萬` : '—'}</TD>
+                            <TD style={font(400, 12)}>{s.expected_date || '—'}</TD>
+                            <TD style={{ color: C.steel, fontSize: 12, maxWidth: 160 }}>{s.note}</TD>
+                            <TD><button onClick={() => deleteExpected(s.id)} style={{ background: 'none', border: 'none', color: C.fog, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button></TD>
+                          </TR>
+                        ))}
+                        <tr style={{ background: C.paleGold }}>
+                          <td colSpan={2} style={{ ...font(800, 13), padding: '10px 12px', color: C.iron }}>合計</td>
+                          <td style={{ ...font(800, 16), padding: '10px 12px', color: C.darkGold }}>{expectedSigns.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0)}萬</td>
+                          <td colSpan={3} style={{ padding: '10px 12px' }} />
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* 新增表單 */}
+                <div style={{ background: C.stone, borderRadius: 4, padding: 16 }}>
+                  <div style={{ ...font(700, 10), letterSpacing: '0.1em', textTransform: 'uppercase', color: C.steel, marginBottom: 10 }}>新增預計簽約</div>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <input placeholder="工程地址 *" value={signInput.address} onChange={e => setSignInput(p => ({ ...p, address: e.target.value }))}
+                      style={{ flex: '2 1 160px', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '7px 10px', background: C.bone }} />
+                    <input placeholder="報價金額(萬)" value={signInput.amount} onChange={e => setSignInput(p => ({ ...p, amount: e.target.value }))}
+                      style={{ flex: '1 1 90px', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '7px 10px', background: C.bone }} />
+                    <input placeholder="預計簽約日" value={signInput.expected_date} onChange={e => setSignInput(p => ({ ...p, expected_date: e.target.value }))}
+                      style={{ flex: '1 1 100px', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '7px 10px', background: C.bone }} />
+                    <input placeholder="備註" value={signInput.note} onChange={e => setSignInput(p => ({ ...p, note: e.target.value }))}
+                      style={{ flex: '2 1 140px', ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '7px 10px', background: C.bone }} />
+                    <button onClick={addExpected} style={{ ...font(700, 13), padding: '7px 20px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron, flexShrink: 0 }}>+ 新增</button>
+                  </div>
                 </div>
               </Block>
 
