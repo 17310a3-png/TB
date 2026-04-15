@@ -460,7 +460,7 @@ export default function App() {
         const lsPn = JSON.parse(localStorage.getItem(`tb_pn_${region}`) || '{}');
         const apiPn = {};
         (Array.isArray(projNotesData) ? projNotesData : []).forEach(r => { apiPn[r.case_no] = r; });
-        setProjectNotes({ ...lsPn, ...apiPn }); // API 資料優先覆蓋
+        setProjectNotes({ ...apiPn, ...lsPn }); // localStorage 優先（本機最新），Supabase 補缺少的 key
         const cn = {};
         (Array.isArray(caseNotesData) ? caseNotesData : []).forEach(r => { cn[r.case_id] = r.note; });
         setCaseNotes(cn);
@@ -525,14 +525,13 @@ export default function App() {
   };
 
   const saveProjectNote = (caseNo, field, value) => {
-    const cur = projectNotes[caseNo] || {};
+    // 直接讀 localStorage（同步）避免 React state 批次更新的 race condition
+    const allNotes = JSON.parse(localStorage.getItem(`tb_pn_${region}`) || '{}');
+    const cur = allNotes[caseNo] || {};
     const updated = { ...cur, [field]: value };
-    setProjectNotes(prev => {
-      const next = { ...prev, [caseNo]: updated };
-      localStorage.setItem(`tb_pn_${region}`, JSON.stringify(next));
-      return next;
-    });
-    // 背景嘗試同步 Supabase（表格不存在時靜默失敗）
+    allNotes[caseNo] = updated;
+    localStorage.setItem(`tb_pn_${region}`, JSON.stringify(allNotes));
+    setProjectNotes(prev => ({ ...prev, [caseNo]: updated }));
     fetch('/api/projectnotes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ region, case_no: caseNo, note: updated.note || '', is_abnormal: !!updated.is_abnormal })
     }).catch(() => {});
