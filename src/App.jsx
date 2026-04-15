@@ -430,6 +430,7 @@ export default function App() {
   const [paymentRec, setPaymentRec] = useState({}); // { case_no: { invoice_amount, received_amount } }
   const [expectedSigns, setExpectedSigns] = useState([]);
   const [signInput, setSignInput] = useState({ address: '', amount: '', expected_date: '', note: '' });
+  const [projectNotes, setProjectNotes] = useState({}); // { case_no: { note, is_abnormal } }
 
   useEffect(() => {
     fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {});
@@ -443,7 +444,8 @@ export default function App() {
         fetch(`/api/notes/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
         fetch(`/api/paymentrecords/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
         fetch(`/api/expected/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
-      ]).then(([meetingData, notesData, paymentsData, expectedData]) => {
+        fetch(`/api/projectnotes/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
+      ]).then(([meetingData, notesData, paymentsData, expectedData, projNotesData]) => {
         setData(meetingData);
         setNotes(Array.isArray(notesData) ? notesData : []);
         const pm = {};
@@ -451,6 +453,9 @@ export default function App() {
         setPaymentRec(pm);
         setExpectedSigns(Array.isArray(expectedData) ? expectedData : []);
         setSignInput({ address: '', amount: '', expected_date: '', note: '' });
+        const pn = {};
+        (Array.isArray(projNotesData) ? projNotesData : []).forEach(r => { pn[r.case_no] = r; });
+        setProjectNotes(pn);
         setLoading(false);
       }).catch(() => setLoading(false));
     }
@@ -498,6 +503,14 @@ export default function App() {
       body: JSON.stringify({ region, case_no: caseNo, address, invoice_amount: updated.invoice_amount || 0, received_amount: updated.received_amount || 0 }) });
   };
 
+  const saveProjectNote = async (caseNo, field, value) => {
+    const cur = projectNotes[caseNo] || {};
+    const updated = { ...cur, [field]: value };
+    setProjectNotes(prev => ({ ...prev, [caseNo]: updated }));
+    await fetch('/api/projectnotes', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ region, case_no: caseNo, note: updated.note || '', is_abnormal: !!updated.is_abnormal }) });
+  };
+
   const scrollTo = (id) => {
     if (id === 'dashboard') { setView('dashboard'); setActiveNav('dashboard'); return; }
     if (view !== 'meeting') setView('meeting');
@@ -543,6 +556,7 @@ export default function App() {
   const working = p.filter(x => x.status === '施工中').length, pending = p.filter(x => x.status === '待驗收').length;
   const waiting = p.filter(x => x.status === '待開工').length;
   const overdue = p.filter(x => { const n = parseInt(x.remainDays); return !isNaN(n) && n < 0; }).length;
+  const abnormalCount = Object.values(projectNotes).filter(n => n.is_abnormal).length;
   const byType = {}; cases.forEach(c => { if (c.caseType) byType[c.caseType] = (byType[c.caseType] || 0) + 1; });
 
   const statusChart = Object.entries(stats.byStatus || {}).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
@@ -707,7 +721,9 @@ export default function App() {
                 <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                   <div style={{ display: 'flex', gap: 10, flex: '1 1 400px', flexWrap: 'wrap' }}>
                     <Metric label="施工中" value={working} /><Metric label="待驗收" value={pending} /><Metric label="待開工" value={waiting} />
-                    <Metric label="逾期" value={overdue} highlight={overdue > 0} /><Metric label="合計" value={p.length} />
+                    <Metric label="逾期" value={overdue} highlight={overdue > 0} />
+                    <Metric label="異常" value={abnormalCount} highlight={abnormalCount > 0} />
+                    <Metric label="合計" value={p.length} />
                   </div>
                   {projChart.length > 0 && <div style={{ flex: '0 0 180px', background: C.stone, borderRadius: 4, padding: 12 }}>
                     <ResponsiveContainer width={160} height={130}>
@@ -718,8 +734,33 @@ export default function App() {
                 </div>
                 {p.length === 0 ? <div style={{ ...bodyFont(500, 13), padding: 24, textAlign: 'center', color: C.steel, background: C.stone, borderRadius: 4 }}>無工程資料</div> : (
                   <div style={{ overflow: 'auto' }}><table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                    <thead><tr>{['案號','狀態','地址','工務','開工','完工','展延','剩餘','進度'].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
-                    <tbody>{p.map((x, i) => <TR key={i}><TD style={{ ...font(700, 13), color: C.darkGold }}>{x.caseNo}</TD><TD><Badge status={x.status} /></TD><TD style={{ maxWidth: 220, lineHeight: 1.5 }}>{x.address}</TD><TD>{x.supervisor}</TD><TD style={font(400, 12)}>{x.startDate}</TD><TD style={font(400, 12)}>{x.endDate}</TD><TD style={font(400, 12)}>{x.delayDays}</TD><TD><Days days={x.remainDays} /></TD><TD style={{ fontSize: 12 }}>{x.progress}</TD></TR>)}</tbody></table></div>
+                    <thead><tr>{['案號','狀態','地址','工務','開工','完工','展延','剩餘','進度','備註','異常'].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
+                    <tbody>{p.map((x, i) => {
+                      const pn = projectNotes[x.caseNo] || {};
+                      return (
+                        <TR key={i}>
+                          <TD style={{ ...font(700, 13), color: C.darkGold }}>{x.caseNo}</TD>
+                          <TD><Badge status={x.status} /></TD>
+                          <TD style={{ maxWidth: 220, lineHeight: 1.5 }}>{x.address}</TD>
+                          <TD>{x.supervisor}</TD>
+                          <TD style={font(400, 12)}>{x.startDate}</TD>
+                          <TD style={font(400, 12)}>{x.endDate}</TD>
+                          <TD style={font(400, 12)}>{x.delayDays}</TD>
+                          <TD><Days days={x.remainDays} /></TD>
+                          <TD style={{ fontSize: 12 }}>{x.progress}</TD>
+                          <TD>
+                            <input type="text" defaultValue={pn.note || ''} placeholder="備註..."
+                              onBlur={e => saveProjectNote(x.caseNo, 'note', e.target.value)}
+                              style={{ width: 120, ...bodyFont(400, 12), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '3px 7px', background: C.bone }} />
+                          </TD>
+                          <TD style={{ textAlign: 'center' }}>
+                            <input type="checkbox" checked={!!pn.is_abnormal}
+                              onChange={e => saveProjectNote(x.caseNo, 'is_abnormal', e.target.checked)}
+                              style={{ width: 16, height: 16, cursor: 'pointer', accentColor: C.rust }} />
+                          </TD>
+                        </TR>
+                      );
+                    })}</tbody></table></div>
                 )}
               </Block>
 

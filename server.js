@@ -658,6 +658,25 @@ app.delete('/api/expected/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ===== 工程備註 API =====
+app.get('/api/projectnotes/:region', async (req, res) => {
+  try {
+    const data = await supaGet('tb_project_notes', `?region=eq.${encodeURIComponent(req.params.region)}`);
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e) { res.json([]); }
+});
+
+app.post('/api/projectnotes', async (req, res) => {
+  try {
+    const { region, case_no, note, is_abnormal } = req.body;
+    const data = await supaUpsert('tb_project_notes', {
+      region, case_no, note: note || '', is_abnormal: !!is_abnormal,
+      updated_at: new Date().toISOString(),
+    });
+    res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== 帳號登入 API（從 Supabase tb_users 驗證）=====
 app.post('/api/login', async (req, res) => {
   try {
