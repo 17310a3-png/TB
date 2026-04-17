@@ -244,7 +244,7 @@ app.get('/api/meeting/:region', async (req, res) => {
           quote: findCol(['報價']),
           contract: findCol(['合約']),
           notes: findCol(['接洽備註']),
-          invalid: findCol(['無效填單']),
+          invalid: findCol(['無效情況', '無效填單']),
           measureDate: findCol(['丈量日期']),
           frameDate: findCol(['圖框日期', '圖面完成']),
           planDate: findCol(['平面圖', '平配']),
@@ -305,15 +305,16 @@ app.get('/api/meeting/:region', async (req, res) => {
         result.cases = activeCases;
         result.abnormalCases = activeCases.filter(c => c.abnormal);
 
-        // 案件統計（含無效填單，與線上一致）
+        // 案件統計（排除無效情況四類）
+        const INVALID_TYPES = new Set(['局部裝修', '預算不足', '重複填單', '非服務區域']);
         const stats = { total: 0, invalidCount: 0, byStatus: {}, byType: {} };
         caseRows.slice(1).forEach(row => {
           const status = get(row, colIdx.status);
           const type = get(row, colIdx.caseType);
           const invalid = get(row, colIdx.invalid);
           if (!status && !type) return;
+          if (INVALID_TYPES.has(invalid)) { stats.invalidCount++; return; }
           stats.total++;
-          if (invalid === 'TRUE') stats.invalidCount++;
           if (status) stats.byStatus[status] = (stats.byStatus[status] || 0) + 1;
           if (type) stats.byType[type] = (stats.byType[type] || 0) + 1;
         });
