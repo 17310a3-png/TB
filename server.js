@@ -334,7 +334,7 @@ app.get('/api/meeting/:region', async (req, res) => {
       try {
         const panelRes = await sheets.spreadsheets.values.get({
           spreadsheetId: config.caseSheet,
-          range: "'面板資料'!A12:Z17",
+          range: "'面板資料'!A1:AM30",
         });
         const pRows = panelRes.data.values || [];
         // 找到姓名列、案件總數、總簽約數、簽約率
@@ -342,6 +342,7 @@ app.get('/api/meeting/:region', async (req, res) => {
         const totalRow = pRows.find(r => r && r[0] === '案件總數') || [];
         const signRow = pRows.find(r => r && r[0] === '總簽約數') || [];
         const rateRow = pRows.find(r => r && r[0] === '簽約率') || [];
+        console.log(`[panel] ${region} rows:${pRows.length} nameFound:${nameRow.length>0} rateFound:${rateRow.length>0} col0s:${pRows.slice(0,8).map(r=>r?.[0]).join('|')}`);
 
         // 找「總和」的 index
         const sumIdx = nameRow.findIndex((v, i) => i > 0 && v === '總和');
