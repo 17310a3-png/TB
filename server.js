@@ -530,7 +530,7 @@ app.get('/api/allregions', async (req, res) => {
             });
             const allRows = meetingRes.data.values || [];
             const targetIdx = allRows.findIndex(r => r[0] && r[0].includes('年度') && r[0].includes('目標'));
-            if (targetIdx >= 0) entry.milestone = parseInt(allRows[targetIdx + 1]?.[2]) || 0;
+            if (targetIdx >= 0) entry.milestone = parseInt(String(allRows[targetIdx + 1]?.[2] || '').replace(/,/g, '')) || 0;
           } catch (e) { console.error(`[allregions] 年度目標 ${regionName}:`, e.message); }
         })() : Promise.resolve(),
 
@@ -543,12 +543,13 @@ app.get('/api/allregions', async (req, res) => {
             });
             const perfRows = perfRes.data.values || [];
             const totalRow = perfRows.find(r => r[0] === '合計');
-            console.log(`[allregions] ${regionName} 業績表 rows:${perfRows.length} col0s:${perfRows.slice(0,8).map(r=>r[0]).join('|')} totalFound:${!!totalRow}`);
+            const cleanNum = v => parseInt(String(v || '').replace(/,/g, '')) || 0;
             if (totalRow) {
-              entry.actual = parseInt(totalRow[5]) || 0;
-              entry.monthRevenue = parseInt(totalRow[3]) || 0;
+              console.log(`[allregions] ${regionName} raw[3]:${totalRow[3]} raw[5]:${totalRow[5]}`);
+              entry.actual = cleanNum(totalRow[5]);
+              entry.monthRevenue = cleanNum(totalRow[3]);
               const months = ['1月','2月','3月','4月','5月','6月','7月','8月','9月','10月','11月','12月'];
-              entry.monthlyRevenue = months.map((month, m) => ({ month, amount: parseInt(totalRow[7 + m * 2]) || 0 }));
+              entry.monthlyRevenue = months.map((month, m) => ({ month, amount: cleanNum(totalRow[7 + m * 2]) }));
             }
           } catch (e) { console.error(`[allregions] 業績 ${regionName}:`, e.message); }
 
