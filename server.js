@@ -413,7 +413,7 @@ app.get('/api/meeting/:region', async (req, res) => {
         try {
           const perfRes = await sheets.spreadsheets.values.get({
             spreadsheetId: config.caseSheet,
-            range: "'業績表'!A1:Z20",
+            range: "'業績表'!A1:AM50",
           });
           const perfRows = perfRes.data.values || [];
           // Row 2: 當月預計業績、預計業績
