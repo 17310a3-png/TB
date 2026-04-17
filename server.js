@@ -543,6 +543,7 @@ app.get('/api/allregions', async (req, res) => {
             });
             const perfRows = perfRes.data.values || [];
             const totalRow = perfRows.find(r => r[0] === '合計');
+            console.log(`[allregions] ${regionName} 業績表 rows:${perfRows.length} col0s:${perfRows.slice(0,8).map(r=>r[0]).join('|')} totalFound:${!!totalRow}`);
             if (totalRow) {
               entry.actual = parseInt(totalRow[5]) || 0;
               entry.monthRevenue = parseInt(totalRow[3]) || 0;
