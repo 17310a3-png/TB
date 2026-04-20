@@ -127,9 +127,25 @@ function RegionsPage() {
   };
   useEffect(() => { load(); }, []);
 
-  const save = async (id, body) => {
+  const save = async (id, body, originalName) => {
     setBusy(true);
-    await fetch(`/api/admin/regions/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const newName = body.name?.trim();
+    if (newName && newName !== originalName) {
+      const confirmed = window.confirm(
+        `確定將「${originalName}」改名為「${newName}」？\n\n所有關聯資料（備註、請款、筆記、年度目標、帳號權限）都會一併更新，此操作無法復原。`
+      );
+      if (!confirmed) { setBusy(false); return; }
+      await fetch(`/api/admin/regions/${id}/rename`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ oldName: originalName, newName }),
+      });
+      const { name: _n, ...rest } = body;
+      if (Object.keys(rest).length > 0) {
+        await fetch(`/api/admin/regions/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(rest) });
+      }
+    } else {
+      await fetch(`/api/admin/regions/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    }
     setEditId(null); load(); setBusy(false);
   };
 
@@ -189,7 +205,7 @@ function RegionsPage() {
                 <TD><input value={editDraft.case_tab ?? (r.case_tab || '進度統計')} onChange={e => setEditDraft(p => ({ ...p, case_tab: e.target.value }))} style={{ ...inpStyle, width: 90 }} /></TD>
                 <TD />
                 <TD style={{ whiteSpace: 'nowrap' }}>
-                  <button onClick={() => save(r.id, editDraft)} disabled={busy} style={{ ...font(700, 11), padding: '4px 12px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron, marginRight: 6 }}>儲存</button>
+                  <button onClick={() => save(r.id, editDraft, r.name)} disabled={busy} style={{ ...font(700, 11), padding: '4px 12px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron, marginRight: 6 }}>儲存</button>
                   <button onClick={() => setEditId(null)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.steel }}>取消</button>
                 </TD>
               </TR>

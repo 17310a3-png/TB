@@ -204,6 +204,49 @@ app.delete('/api/admin/regions/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.post('/api/admin/regions/:id/rename', async (req, res) => {
+  try {
+    const { oldName, newName } = req.body;
+    if (!oldName || !newName || oldName === newName) return res.status(400).json({ error: '名稱無效' });
+
+    const patchRegion = (table) =>
+      fetch(`${SUPABASE_URL}/rest/v1/${table}?region=eq.${encodeURIComponent(oldName)}`, {
+        method: 'PATCH', headers: { ...supaServiceHeaders },
+        body: JSON.stringify({ region: newName }),
+      });
+
+    // 更新所有關聯表
+    await Promise.all([
+      fetch(`${SUPABASE_URL}/rest/v1/tb_regions?id=eq.${req.params.id}`, {
+        method: 'PATCH', headers: { ...supaServiceHeaders }, body: JSON.stringify({ name: newName }),
+      }),
+      patchRegion('tb_weekly_notes'),
+      patchRegion('tb_payment_records'),
+      patchRegion('tb_expected_signs'),
+      patchRegion('tb_project_notes'),
+      patchRegion('tb_case_notes'),
+      patchRegion('tb_annual_targets'),
+    ]);
+
+    // tb_users.region 是逗號分隔，需要逐筆替換
+    const usersRes = await fetch(`${SUPABASE_URL}/rest/v1/tb_users?select=id,region&region=like.*${encodeURIComponent(oldName)}*`, {
+      headers: supaServiceHeaders,
+    });
+    const users = await usersRes.json();
+    if (Array.isArray(users) && users.length > 0) {
+      await Promise.all(users.map(u => {
+        const updated = (u.region || '').split(',').map(r => r.trim() === oldName ? newName : r).join(',');
+        return fetch(`${SUPABASE_URL}/rest/v1/tb_users?id=eq.${u.id}`, {
+          method: 'PATCH', headers: { ...supaServiceHeaders }, body: JSON.stringify({ region: updated }),
+        });
+      }));
+    }
+
+    await loadRegions();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ===== 整合 API: 一次取得某地區的完整週會資料 =====
 app.get('/api/meeting/:region', async (req, res) => {
   const timeoutId = setTimeout(() => {
