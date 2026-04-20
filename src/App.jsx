@@ -282,6 +282,51 @@ function RegionsPage({ onChanged }) {
   );
 }
 
+function ChangePasswordPage({ auth, onBack }) {
+  const [form, setForm] = useState({ old: '', new1: '', new2: '' });
+  const [msg, setMsg] = useState('');
+  const [ok, setOk] = useState(false);
+
+  const submit = async () => {
+    if (!form.old || !form.new1) return setMsg('請填寫所有欄位');
+    if (form.new1 !== form.new2) return setMsg('新密碼兩次輸入不一致');
+    if (form.new1.length < 4) return setMsg('新密碼至少 4 個字元');
+    const res = await fetch('/api/account/password', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: auth.username, oldPassword: form.old, newPassword: form.new1 }) });
+    const data = await res.json();
+    if (data.ok) { setOk(true); setMsg('密碼修改成功！'); setForm({ old: '', new1: '', new2: '' }); }
+    else setMsg(data.message || '修改失敗');
+  };
+
+  const inp = { ...bodyFont(400, 14), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '9px 12px', background: C.bone, width: '100%' };
+  return (
+    <div style={{ ...fadeIn, maxWidth: 380 }}>
+      <div style={{ ...font(800, 24), color: C.iron, marginBottom: 4 }}>修改密碼</div>
+      <div style={{ ...bodyFont(500, 13), color: C.steel, marginBottom: 28 }}>帳號：{auth.name}（{auth.username}）</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div>
+          <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>目前密碼</div>
+          <input type="password" value={form.old} onChange={e => setForm(p => ({ ...p, old: e.target.value }))} style={inp} />
+        </div>
+        <div>
+          <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>新密碼</div>
+          <input type="password" value={form.new1} onChange={e => setForm(p => ({ ...p, new1: e.target.value }))} style={inp} />
+        </div>
+        <div>
+          <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>確認新密碼</div>
+          <input type="password" value={form.new2} onChange={e => setForm(p => ({ ...p, new2: e.target.value }))}
+            onKeyDown={e => e.key === 'Enter' && submit()} style={inp} />
+        </div>
+        {msg && <div style={{ ...bodyFont(500, 13), color: ok ? C.moss : C.rust, padding: '8px 12px', borderRadius: 3, background: ok ? C.mossLight : C.rustLight }}>{msg}</div>}
+        <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+          <button onClick={submit} style={{ ...font(700, 13), padding: '9px 24px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron }}>確認修改</button>
+          <button onClick={onBack} style={{ ...font(600, 13), padding: '9px 16px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.steel }}>返回</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AccountsPage({ auth }) {
   const [users, setUsers] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -913,7 +958,8 @@ export default function App() {
               ))}
               <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.1)', margin: '0 4px' }} />
               <span style={{ ...bodyFont(500, 11), color: 'rgba(255,255,255,0.25)' }}>{new Date().toLocaleDateString('zh-TW', { month: 'long', day: 'numeric' })}</span>
-              <button onClick={logout} style={{ ...font(600, 10), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ironMid}`, cursor: 'pointer', background: 'none', color: 'rgba(255,255,255,0.35)', marginLeft: 4 }}>{auth.name} · 登出</button>
+              <button onClick={() => setView('changepass')} style={{ ...font(600, 10), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ironMid}`, cursor: 'pointer', background: 'none', color: 'rgba(255,255,255,0.35)', marginLeft: 4 }}>{auth.name}</button>
+              <button onClick={logout} style={{ ...font(600, 10), padding: '4px 8px', borderRadius: 3, border: `1px solid ${C.ironMid}`, cursor: 'pointer', background: 'none', color: 'rgba(255,255,255,0.25)' }}>登出</button>
               {isAdmin && (
                 <>
                   <button onClick={() => setView('regions')} title="分店管理" style={{ ...font(600, 14), padding: '4px 8px', borderRadius: 3, border: `1px solid ${view === 'regions' ? C.gold : C.ironMid}`, cursor: 'pointer', background: view === 'regions' ? 'rgba(249,185,27,0.15)' : 'none', color: view === 'regions' ? C.gold : 'rgba(255,255,255,0.4)', marginLeft: 2 }}>🏪</button>
@@ -962,7 +1008,7 @@ export default function App() {
 
         {/* ===== MAIN ===== */}
         <main style={{ flex: 1, padding: isMobile ? '16px 12px' : '28px 32px', paddingBottom: isMobile ? 76 : undefined, overflowX: 'hidden' }}>
-          {view === 'dashboard' ? <Dashboard data={allData} onAllDataRefresh={() => fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {})} /> : view === 'accounts' ? <AccountsPage auth={auth} /> : view === 'regions' ? <RegionsPage onChanged={refreshRegionList} /> : loading ? (
+          {view === 'dashboard' ? <Dashboard data={allData} onAllDataRefresh={() => fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {})} /> : view === 'accounts' ? <AccountsPage auth={auth} /> : view === 'regions' ? <RegionsPage onChanged={refreshRegionList} /> : view === 'changepass' ? <ChangePasswordPage auth={auth} onBack={() => setView(auth.role === 'admin' ? 'dashboard' : 'meeting')} /> : loading ? (
             <div style={{ ...bodyFont(500, 14), textAlign: 'center', padding: 80, color: C.steel }}>載入中...</div>
           ) : (
             <>
