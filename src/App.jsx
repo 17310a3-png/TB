@@ -92,11 +92,11 @@ const ChartTip = ({ active, payload, label }) => {
 const parseRegions = (str) => str ? String(str).split(',').map(s => s.trim()).filter(Boolean) : [];
 const joinRegions = (arr) => arr.join(',');
 
-function RegionCheckboxes({ selected, onChange }) {
+function RegionCheckboxes({ selected, onChange, list }) {
   const toggle = (r) => onChange(selected.includes(r) ? selected.filter(x => x !== r) : [...selected, r]);
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
-      {REGIONS.map(r => {
+      {(list || []).map(r => {
         const on = selected.includes(r);
         return (
           <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
@@ -289,9 +289,13 @@ function AccountsPage({ auth }) {
   const [error, setError] = useState('');
   const [editId, setEditId] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', password: '', role: 'region', regions: [] });
+  const [regionList, setRegionList] = useState([]);
 
   const load = () => fetch('/api/admin/users').then(r => r.json()).then(setUsers).catch(() => {});
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    fetch('/api/regions').then(r => r.json()).then(d => { if (Array.isArray(d)) setRegionList(d); }).catch(() => {});
+  }, []);
 
   const addUser = async (e) => {
     e.preventDefault();
@@ -398,7 +402,7 @@ function AccountsPage({ auth }) {
                           {editForm.role === 'region' && (
                             <div style={{ flex: '2 1 240px' }}>
                               <div style={{ ...font(700, 9), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>可看區域（複選）</div>
-                              <RegionCheckboxes selected={editForm.regions} onChange={regions => setEditForm(p => ({ ...p, regions }))} />
+                              <RegionCheckboxes selected={editForm.regions} onChange={regions => setEditForm(p => ({ ...p, regions }))} list={regionList} />
                             </div>
                           )}
                           <div style={{ display: 'flex', gap: 8, alignSelf: 'flex-end', paddingBottom: 2 }}>
@@ -451,7 +455,7 @@ function AccountsPage({ auth }) {
           {form.role === 'region' && (
             <div>
               <div style={{ ...font(700, 10), color: C.steel, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>可看區域 *（複選）</div>
-              <RegionCheckboxes selected={form.regions} onChange={regions => setForm(p => ({ ...p, regions }))} />
+              <RegionCheckboxes selected={form.regions} onChange={regions => setForm(p => ({ ...p, regions }))} list={regionList} />
             </div>
           )}
           <div>
