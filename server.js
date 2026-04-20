@@ -377,39 +377,21 @@ app.get('/api/meeting/:region', async (req, res) => {
       }
     }
 
-    // --- 4. 週會紀錄表: 預計簽約 / 年度目標 (從各區週會紀錄表讀取) ---
-    const weeklyId = config.weeklySheet;
-    if (weeklyId) {
-      try {
-        // 讀取會議表單大範圍，動態搜尋關鍵字位置
-        const meetingRes = await sheets.spreadsheets.values.get({
-          spreadsheetId: weeklyId,
-          range: "'會議表單'!A1:R210",
-        });
-        const allRows = meetingRes.data.values || [];
-
-        // 動態找「預計\n簽約」位置
-        const expectedIdx = allRows.findIndex(r => r[0] && r[0].includes('預計') && r[0].includes('簽約'));
-        if (expectedIdx >= 0 && allRows[expectedIdx + 1]) {
-          result.expectedSign = {
-            count: allRows[expectedIdx + 1][1] || '0件',
-            amount: allRows[expectedIdx + 1][2] || '0萬',
-          };
-        }
-
-        // 動態找「年度\n目標」位置
-        const targetIdx = allRows.findIndex(r => r[0] && r[0].includes('年度') && r[0].includes('目標'));
-        if (targetIdx >= 0) {
-          result.yearTarget = {
-            milestone: { revenue: allRows[targetIdx + 1]?.[2] || '', signRate: allRows[targetIdx + 1]?.[3] || '' },
-            actual: { revenue: allRows[targetIdx + 2]?.[2] || '', signRate: allRows[targetIdx + 2]?.[3] || '' },
-            diff: { revenue: allRows[targetIdx + 3]?.[2] || '', signRate: allRows[targetIdx + 3]?.[3] || '' },
-            monthlyTarget: { revenue: allRows[targetIdx + 4]?.[2] || '', signRate: allRows[targetIdx + 4]?.[3] || '' },
-          };
-        }
-      } catch (e) {
-        console.error('週會紀錄表讀取錯誤:', e.message);
+    // --- 4. 年度目標 (從 Supabase 讀取) ---
+    try {
+      const currentYear = new Date().getFullYear();
+      const atData = await supaGet('tb_annual_targets', `?region=eq.${encodeURIComponent(region)}&year=eq.${currentYear}`);
+      const at = Array.isArray(atData) && atData[0];
+      if (at) {
+        result.yearTarget = {
+          milestone: { revenue: at.milestone_revenue ? String(at.milestone_revenue) : '', signRate: at.milestone_sign_rate || '' },
+          actual: { revenue: '', signRate: '' },
+          diff: { revenue: '', signRate: '' },
+          monthlyTarget: { revenue: '', signRate: '' },
+        };
       }
+    } catch (e) {
+      console.error('年度目標 Supabase 讀取錯誤:', e.message);
     }
     try {
       // 店內數據 + 營業額統計 從各區業績表合計列讀取
@@ -529,18 +511,15 @@ app.get('/api/allregions', async (req, res) => {
       const entry = { region: regionName, milestone: 0, actual: 0, signRate: '', monthRevenue: 0 };
 
       await Promise.all([
-        // 年度目標 from 週會紀錄表
-        config.weeklySheet ? (async () => {
+        // 年度目標 from Supabase
+        (async () => {
           try {
-            const meetingRes = await sheets.spreadsheets.values.get({
-              spreadsheetId: config.weeklySheet,
-              range: "'會議表單'!A1:R210",
-            });
-            const allRows = meetingRes.data.values || [];
-            const targetIdx = allRows.findIndex(r => r[0] && r[0].includes('年度') && r[0].includes('目標'));
-            if (targetIdx >= 0) entry.milestone = parseInt(String(allRows[targetIdx + 1]?.[2] || '').replace(/,/g, '')) || 0;
+            const currentYear = new Date().getFullYear();
+            const atData = await supaGet('tb_annual_targets', `?region=eq.${encodeURIComponent(regionName)}&year=eq.${currentYear}`);
+            const at = Array.isArray(atData) && atData[0];
+            if (at) entry.milestone = at.milestone_revenue || 0;
           } catch (e) { console.error(`[allregions] 年度目標 ${regionName}:`, e.message); }
-        })() : Promise.resolve(),
+        })(),
 
         // 業績 from 案件追蹤表
         config.caseSheet ? (async () => {
@@ -696,6 +675,30 @@ app.delete('/api/expected/:id', async (req, res) => {
   try {
     await supaDelete('tb_expected_signs', req.params.id);
     res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ===== 年度目標 API =====
+app.get('/api/annualtargets/:region', async (req, res) => {
+  try {
+    const region = decodeURIComponent(req.params.region);
+    const year = req.query.year || new Date().getFullYear();
+    const data = await supaGet('tb_annual_targets', `?region=eq.${encodeURIComponent(region)}&year=eq.${year}`);
+    res.json(Array.isArray(data) && data[0] ? data[0] : null);
+  } catch (e) { res.json(null); }
+});
+
+app.post('/api/annualtargets', async (req, res) => {
+  try {
+    const { region, year, milestone_revenue, milestone_sign_rate } = req.body;
+    const currentYear = year || new Date().getFullYear();
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/tb_annual_targets?on_conflict=region,year`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': 'application/json', Prefer: 'resolution=merge-duplicates,return=representation' },
+      body: JSON.stringify({ region, year: currentYear, milestone_revenue: milestone_revenue || 0, milestone_sign_rate: milestone_sign_rate || '', updated_at: new Date().toISOString() }),
+    });
+    res.json(await r.json());
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

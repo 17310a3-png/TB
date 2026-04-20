@@ -434,6 +434,8 @@ export default function App() {
   const [projectNotes, setProjectNotes] = useState({}); // { case_no: { note, is_abnormal } }
   const [noteInputs, setNoteInputs] = useState({}); // controlled note input values for 02 block
   const [caseNotes, setCaseNotes] = useState({}); // { case_id: note } for 01 block
+  const [annualTarget, setAnnualTarget] = useState(null); // { milestone_revenue, milestone_sign_rate }
+  const [annualEdit, setAnnualEdit] = useState(null); // 編輯中草稿
 
   useEffect(() => {
     fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {});
@@ -449,7 +451,8 @@ export default function App() {
         fetch(`/api/expected/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
         fetch(`/api/projectnotes/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
         fetch(`/api/casenotes/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => []),
-      ]).then(([meetingData, notesData, paymentsData, expectedData, projNotesData, caseNotesData]) => {
+        fetch(`/api/annualtargets/${encodeURIComponent(region)}`).then(r => r.json()).catch(() => null),
+      ]).then(([meetingData, notesData, paymentsData, expectedData, projNotesData, caseNotesData, annualData]) => {
         setData(meetingData);
         setNotes(Array.isArray(notesData) ? notesData : []);
         const pm = {};
@@ -470,6 +473,8 @@ export default function App() {
         const cn = {};
         (Array.isArray(caseNotesData) ? caseNotesData : []).forEach(r => { cn[r.case_id] = r.note; });
         setCaseNotes(cn);
+        setAnnualTarget(annualData || null);
+        setAnnualEdit(null);
         setLoading(false);
       }).catch(err => { console.error('載入失敗:', err); setLoading(false); setData({ error: '載入超時，請重新整理' }); });
     }
@@ -507,6 +512,14 @@ export default function App() {
   const deleteExpected = async (id) => {
     await fetch(`/api/expected/${id}`, { method: 'DELETE' });
     setExpectedSigns(prev => prev.filter(s => s.id !== id));
+  };
+
+  const saveAnnualTarget = async (draft) => {
+    const res = await fetch('/api/annualtargets', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ region, ...draft }) });
+    const saved = await res.json();
+    const record = Array.isArray(saved) ? saved[0] : saved;
+    if (record && record.id) { setAnnualTarget(record); setAnnualEdit(null); }
   };
 
   const setPaymentDraft = (caseNo, field, value) => {
@@ -985,13 +998,45 @@ export default function App() {
                     </div></div>)}
 
                   <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 24 }}>
-                    {data?.yearTarget && (<div style={{ flex: '1 1 340px' }}>
-                      <div style={{ ...font(700, 9), letterSpacing: '0.1em', textTransform: 'uppercase', color: C.steel, marginBottom: 10 }}>年度目標</div>
-                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                        <thead><tr><TH /><TH>營業額</TH><TH>簽約率</TH></tr></thead>
-                        <tbody>{[{ l: '里程碑', d: data.yearTarget.milestone, c: C.darkGold }, { l: '實際現狀', d: data.yearTarget.actual, c: C.moss }, { l: '差異數', d: data.yearTarget.diff, c: C.rust }, { l: '每月須達成', d: data.yearTarget.monthlyTarget, c: C.ember }].map(r => (
-                          <TR key={r.l}><TD style={{ ...font(800, 13), color: r.c }}>{r.l}</TD><TD style={font(800, 18)}>{r.d.revenue}</TD><TD style={font(600, 13)}>{r.d.signRate}</TD></TR>
-                        ))}</tbody></table></div>)}
+                    {(() => {
+                      const yt = data?.yearTarget;
+                      const at = annualTarget;
+                      const draft = annualEdit;
+                      const isEditing = draft !== null;
+                      const milestoneRev = isEditing ? draft.milestone_revenue : (at?.milestone_revenue ?? (yt?.milestone?.revenue ? parseInt(yt.milestone.revenue) : ''));
+                      const milestoneRate = isEditing ? draft.milestone_sign_rate : (at?.milestone_sign_rate ?? yt?.milestone?.signRate ?? '');
+                      return (
+                        <div style={{ flex: '1 1 340px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                            <div style={{ ...font(700, 9), letterSpacing: '0.1em', textTransform: 'uppercase', color: C.steel }}>年度目標</div>
+                            {!isEditing && <button onClick={() => setAnnualEdit({ milestone_revenue: at?.milestone_revenue || '', milestone_sign_rate: at?.milestone_sign_rate || '' })} style={{ ...font(600, 10), padding: '2px 8px', borderRadius: 2, border: `1px solid ${C.ash}`, background: C.bone, color: C.steel, cursor: 'pointer' }}>編輯</button>}
+                          </div>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead><tr><TH /><TH>營業額(萬)</TH><TH>簽約率</TH></tr></thead>
+                            <tbody>
+                              <TR>
+                                <TD style={{ ...font(800, 13), color: C.darkGold }}>里程碑</TD>
+                                <TD style={font(800, 18)}>
+                                  {isEditing ? <input type="number" value={draft.milestone_revenue} onChange={e => setAnnualEdit(p => ({ ...p, milestone_revenue: e.target.value }))} onWheel={e => e.target.blur()} style={{ width: 100, ...font(600, 13), border: `1px solid ${C.gold}`, borderRadius: 3, padding: '3px 6px' }} /> : (milestoneRev ? `${milestoneRev}萬` : '—')}
+                                </TD>
+                                <TD style={font(600, 13)}>
+                                  {isEditing ? <input value={draft.milestone_sign_rate} onChange={e => setAnnualEdit(p => ({ ...p, milestone_sign_rate: e.target.value }))} placeholder="如 35%" style={{ width: 70, ...font(600, 12), border: `1px solid ${C.gold}`, borderRadius: 3, padding: '3px 6px' }} /> : (milestoneRate || '—')}
+                                </TD>
+                              </TR>
+                              {yt && [{ l: '實際現狀', d: yt.actual, c: C.moss }, { l: '差異數', d: yt.diff, c: C.rust }, { l: '每月須達成', d: yt.monthlyTarget, c: C.ember }].map(r => (
+                                <TR key={r.l}><TD style={{ ...font(800, 13), color: r.c }}>{r.l}</TD><TD style={font(800, 18)}>{r.d.revenue}</TD><TD style={font(600, 13)}>{r.d.signRate}</TD></TR>
+                              ))}
+                            </tbody>
+                          </table>
+                          {isEditing && (
+                            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                              <button onClick={() => saveAnnualTarget(draft)} style={{ ...font(700, 12), padding: '5px 16px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron }}>儲存</button>
+                              <button onClick={() => setAnnualEdit(null)} style={{ ...font(600, 12), padding: '5px 12px', borderRadius: 3, border: `1px solid ${C.ash}`, background: C.bone, color: C.steel, cursor: 'pointer' }}>取消</button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                     {revChart.length > 0 && (<div style={{ flex: '1 1 380px' }}>
                       <div style={{ ...font(700, 9), letterSpacing: '0.1em', textTransform: 'uppercase', color: C.steel, marginBottom: 10 }}>營業額統計</div>
                       <div style={{ background: C.stone, borderRadius: 4, padding: 16 }}>
