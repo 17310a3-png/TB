@@ -384,7 +384,7 @@ function Dashboard({ data, onAllDataRefresh }) {
   };
 
   const enriched = regions.map(r => ({ ...r, milestone: getMilestone(r.region) }));
-  const active = enriched.filter(r => r.milestone > 0 || r.actual > 0);
+  const active = editMode ? enriched : enriched.filter(r => r.milestone > 0 || r.actual > 0);
   const totalMilestone = enriched.reduce((s, r) => s + (getMilestone(r.region) || 0), 0);
   const barData = active.map(r => ({ name: r.region, 目標: r.milestone, 業績: r.actual }));
   const rateData = active.map(r => ({ name: r.region, 年度達成率: r.milestone > 0 ? parseFloat((r.actual / r.milestone * 100).toFixed(1)) : 0 }));
