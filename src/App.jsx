@@ -156,6 +156,18 @@ function RegionsPage({ onChanged }) {
     setForm({ name: '', case_sheet: '', work_sheet: '', case_tab: '進度統計' }); load(); setBusy(false); if (onChanged) onChanged();
   };
 
+  const moveRegion = async (idx, dir) => {
+    const active = regions.filter(r => r.is_active);
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= active.length) return;
+    const a = active[idx], b = active[swapIdx];
+    await Promise.all([
+      fetch(`/api/admin/regions/${a.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sort_order: b.sort_order }) }),
+      fetch(`/api/admin/regions/${b.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sort_order: a.sort_order }) }),
+    ]);
+    load(); if (onChanged) onChanged();
+  };
+
   const deactivate = async (id) => {
     if (!window.confirm('確定停用此分店？停用後導覽列不會顯示，資料仍保留。')) return;
     await fetch(`/api/admin/regions/${id}`, { method: 'DELETE' }); load();
@@ -195,35 +207,50 @@ function RegionsPage({ onChanged }) {
       {/* 分店列表 */}
       <div style={{ background: C.bone, borderRadius: 4, overflow: 'auto', marginBottom: 24 }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
-          <thead><tr><TH>分店名稱</TH><TH>案件追蹤表 Sheet ID</TH><TH>工程工期表 Sheet ID</TH><TH>案件分頁名</TH><TH>狀態</TH><TH></TH></tr></thead>
+          <thead><tr><TH>順序</TH><TH>分店名稱</TH><TH>案件追蹤表 Sheet ID</TH><TH>工程工期表 Sheet ID</TH><TH>案件分頁名</TH><TH>狀態</TH><TH></TH></tr></thead>
           <tbody>
-            {regions.map(r => editId === r.id ? (
-              <TR key={r.id} style={{ background: C.warmCream }}>
-                <TD><input value={editDraft.name ?? r.name} onChange={e => setEditDraft(p => ({ ...p, name: e.target.value }))} style={{ ...inpStyle, width: 80 }} /></TD>
-                <TD><input value={editDraft.case_sheet ?? (r.case_sheet || '')} onChange={e => setEditDraft(p => ({ ...p, case_sheet: e.target.value }))} style={{ ...inpStyle, width: 200, fontFamily: 'monospace', fontSize: 11 }} placeholder="Sheet ID" /></TD>
-                <TD><input value={editDraft.work_sheet ?? (r.work_sheet || '')} onChange={e => setEditDraft(p => ({ ...p, work_sheet: e.target.value }))} style={{ ...inpStyle, width: 200, fontFamily: 'monospace', fontSize: 11 }} placeholder="Sheet ID" /></TD>
-                <TD><input value={editDraft.case_tab ?? (r.case_tab || '進度統計')} onChange={e => setEditDraft(p => ({ ...p, case_tab: e.target.value }))} style={{ ...inpStyle, width: 90 }} /></TD>
-                <TD />
-                <TD style={{ whiteSpace: 'nowrap' }}>
-                  <button onClick={() => save(r.id, editDraft, r.name)} disabled={busy} style={{ ...font(700, 11), padding: '4px 12px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron, marginRight: 6 }}>儲存</button>
-                  <button onClick={() => setEditId(null)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.steel }}>取消</button>
-                </TD>
-              </TR>
-            ) : (
-              <TR key={r.id} style={{ opacity: r.is_active ? 1 : 0.45 }}>
-                <TD style={font(700, 14)}>{r.name}</TD>
-                <TD style={{ fontFamily: 'monospace', fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.case_sheet || '—'}</TD>
-                <TD style={{ fontFamily: 'monospace', fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.work_sheet || '—'}</TD>
-                <TD style={font(400, 12)}>{r.case_tab || '—'}</TD>
-                <TD><span style={{ ...font(700, 10), padding: '2px 8px', borderRadius: 2, background: r.is_active ? C.mossLight : C.stone, color: r.is_active ? C.moss : C.fog }}>{r.is_active ? '啟用' : '停用'}</span></TD>
-                <TD style={{ whiteSpace: 'nowrap' }}>
-                  <button onClick={() => { setEditId(r.id); setEditDraft({}); }} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.steel, marginRight: 6 }}>編輯</button>
-                  {r.is_active
-                    ? <button onClick={() => deactivate(r.id)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.rust }}>停用</button>
-                    : <button onClick={() => restore(r.id)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.moss }}>恢復</button>}
-                </TD>
-              </TR>
-            ))}
+            {(() => {
+              const activeList = regions.filter(r => r.is_active);
+              return regions.map(r => {
+                const activeIdx = activeList.findIndex(a => a.id === r.id);
+                return editId === r.id ? (
+                  <TR key={r.id} style={{ background: C.warmCream }}>
+                    <TD />
+                    <TD><input value={editDraft.name ?? r.name} onChange={e => setEditDraft(p => ({ ...p, name: e.target.value }))} style={{ ...inpStyle, width: 80 }} /></TD>
+                    <TD><input value={editDraft.case_sheet ?? (r.case_sheet || '')} onChange={e => setEditDraft(p => ({ ...p, case_sheet: e.target.value }))} style={{ ...inpStyle, width: 200, fontFamily: 'monospace', fontSize: 11 }} placeholder="Sheet ID" /></TD>
+                    <TD><input value={editDraft.work_sheet ?? (r.work_sheet || '')} onChange={e => setEditDraft(p => ({ ...p, work_sheet: e.target.value }))} style={{ ...inpStyle, width: 200, fontFamily: 'monospace', fontSize: 11 }} placeholder="Sheet ID" /></TD>
+                    <TD><input value={editDraft.case_tab ?? (r.case_tab || '進度統計')} onChange={e => setEditDraft(p => ({ ...p, case_tab: e.target.value }))} style={{ ...inpStyle, width: 90 }} /></TD>
+                    <TD />
+                    <TD style={{ whiteSpace: 'nowrap' }}>
+                      <button onClick={() => save(r.id, editDraft, r.name)} disabled={busy} style={{ ...font(700, 11), padding: '4px 12px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron, marginRight: 6 }}>儲存</button>
+                      <button onClick={() => setEditId(null)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.steel }}>取消</button>
+                    </TD>
+                  </TR>
+                ) : (
+                  <TR key={r.id} style={{ opacity: r.is_active ? 1 : 0.45 }}>
+                    <TD>
+                      {r.is_active && (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                          <button onClick={() => moveRegion(activeIdx, -1)} disabled={activeIdx === 0} style={{ ...font(600, 10), padding: '1px 6px', borderRadius: 2, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.steel, opacity: activeIdx === 0 ? 0.3 : 1 }}>▲</button>
+                          <button onClick={() => moveRegion(activeIdx, 1)} disabled={activeIdx === activeList.length - 1} style={{ ...font(600, 10), padding: '1px 6px', borderRadius: 2, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.steel, opacity: activeIdx === activeList.length - 1 ? 0.3 : 1 }}>▼</button>
+                        </div>
+                      )}
+                    </TD>
+                    <TD style={font(700, 14)}>{r.name}</TD>
+                    <TD style={{ fontFamily: 'monospace', fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.case_sheet || '—'}</TD>
+                    <TD style={{ fontFamily: 'monospace', fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.work_sheet || '—'}</TD>
+                    <TD style={font(400, 12)}>{r.case_tab || '—'}</TD>
+                    <TD><span style={{ ...font(700, 10), padding: '2px 8px', borderRadius: 2, background: r.is_active ? C.mossLight : C.stone, color: r.is_active ? C.moss : C.fog }}>{r.is_active ? '啟用' : '停用'}</span></TD>
+                    <TD style={{ whiteSpace: 'nowrap' }}>
+                      <button onClick={() => { setEditId(r.id); setEditDraft({}); }} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.steel, marginRight: 6 }}>編輯</button>
+                      {r.is_active
+                        ? <button onClick={() => deactivate(r.id)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.rust }}>停用</button>
+                        : <button onClick={() => restore(r.id)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.moss }}>恢復</button>}
+                    </TD>
+                  </TR>
+                );
+              });
+            })()}
           </tbody>
         </table>
       </div>
