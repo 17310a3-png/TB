@@ -702,6 +702,14 @@ app.post('/api/annualtargets', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+app.get('/api/annualtargets', async (req, res) => {
+  try {
+    const year = req.query.year || new Date().getFullYear();
+    const data = await supaGet('tb_annual_targets', `?year=eq.${year}&order=region.asc`);
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e) { res.json([]); }
+});
+
 // ===== 工程備註 API =====
 app.get('/api/projectnotes/:region', async (req, res) => {
   try {

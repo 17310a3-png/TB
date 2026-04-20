@@ -344,21 +344,60 @@ function LoginPage({ onLogin }) {
 }
 
 // ======= DASHBOARD VIEW =======
-function Dashboard({ data }) {
+function Dashboard({ data, onAllDataRefresh }) {
+  const [targets, setTargets] = React.useState({});  // { region: { milestone_revenue, milestone_sign_rate } }
+  const [editMode, setEditMode] = React.useState(false);
+  const [drafts, setDrafts] = React.useState({});    // { region: { milestone_revenue, milestone_sign_rate } }
+
+  React.useEffect(() => {
+    fetch('/api/annualtargets').then(r => r.json()).then(rows => {
+      const map = {};
+      (Array.isArray(rows) ? rows : []).forEach(r => { map[r.region] = r; });
+      setTargets(map);
+    }).catch(() => {});
+  }, []);
+
+  const saveAll = async () => {
+    await Promise.all(Object.entries(drafts).map(([region, d]) =>
+      fetch('/api/annualtargets', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ region, milestone_revenue: parseInt(d.milestone_revenue) || 0, milestone_sign_rate: d.milestone_sign_rate || '' }) })
+        .then(r => r.json()).then(saved => {
+          const record = Array.isArray(saved) ? saved[0] : saved;
+          if (record) setTargets(prev => ({ ...prev, [region]: record }));
+        })
+    ));
+    setDrafts({});
+    setEditMode(false);
+    if (onAllDataRefresh) onAllDataRefresh();
+  };
+
   if (!data) return null;
   const { regions, total } = data;
-  const active = regions.filter(r => r.milestone > 0 || r.actual > 0);
+
+  const getMilestone = (regionName) => {
+    const draft = drafts[regionName];
+    if (draft) return parseInt(draft.milestone_revenue) || 0;
+    const t = targets[regionName];
+    if (t) return t.milestone_revenue || 0;
+    const r = regions.find(x => x.region === regionName);
+    return r?.milestone || 0;
+  };
+
+  const enriched = regions.map(r => ({ ...r, milestone: getMilestone(r.region) }));
+  const active = enriched.filter(r => r.milestone > 0 || r.actual > 0);
+  const totalMilestone = enriched.reduce((s, r) => s + (getMilestone(r.region) || 0), 0);
   const barData = active.map(r => ({ name: r.region, 目標: r.milestone, 業績: r.actual }));
   const rateData = active.map(r => ({ name: r.region, 年度達成率: r.milestone > 0 ? parseFloat((r.actual / r.milestone * 100).toFixed(1)) : 0 }));
+
   return (
     <div style={fadeIn}>
       <div style={{ ...font(800, 28), color: C.iron, letterSpacing: '-0.02em', marginBottom: 4 }}>全區營運總覽</div>
       <div style={{ ...bodyFont(500, 13), color: C.steel, marginBottom: 28 }}>各門市年度目標達成狀況一覽</div>
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
-        <Metric label="年度目標" value={`${total.milestone}萬`} large />
+        <Metric label="年度目標" value={`${totalMilestone}萬`} large />
         <Metric label="累積業績" value={`${total.actual}萬`} highlight large />
-        <Metric label="差異" value={`${total.diff}萬`} large />
+        <Metric label="差異" value={`${totalMilestone - total.actual}萬`} large />
         <Metric label="當月業績" value={`${total.monthRevenue}萬`} large />
         <Metric label="累積達成率" value={total.totalRate} large />
       </div>
@@ -389,21 +428,52 @@ function Dashboard({ data }) {
       </div>
 
       <div style={{ background: C.bone, borderRadius: 4, overflow: 'auto' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: `1px solid ${C.ash}` }}>
+          <span style={{ ...font(700, 11), letterSpacing: '0.08em', textTransform: 'uppercase', color: C.steel }}>各區明細</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {editMode ? (
+              <>
+                <button onClick={saveAll} style={{ ...font(700, 12), padding: '5px 16px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron }}>儲存全部</button>
+                <button onClick={() => { setDrafts({}); setEditMode(false); }} style={{ ...font(600, 12), padding: '5px 12px', borderRadius: 3, border: `1px solid ${C.ash}`, background: C.bone, color: C.steel, cursor: 'pointer' }}>取消</button>
+              </>
+            ) : (
+              <button onClick={() => setEditMode(true)} style={{ ...font(600, 11), padding: '4px 12px', borderRadius: 3, border: `1px solid ${C.ash}`, background: C.bone, color: C.steel, cursor: 'pointer' }}>設定年度目標</button>
+            )}
+          </div>
+        </div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead><tr><TH>地區</TH><TH>年度目標</TH><TH>累積業績</TH><TH>年度達成率</TH><TH>月累積達成率</TH><TH>簽約率</TH><TH>當月業績</TH><TH>當月達成率</TH></tr></thead>
+          <thead><tr><TH>地區</TH><TH>年度目標(萬)</TH><TH>累積業績</TH><TH>年度達成率</TH><TH>月累積達成率</TH><TH>簽約率</TH><TH>當月業績</TH><TH>當月達成率</TH></tr></thead>
           <tbody>
             {active.map((r, i) => {
               const yearRate = r.milestone > 0 ? (r.actual / r.milestone * 100).toFixed(1) : 0;
               const monthRate = parseFloat(r.totalRate) || 0;
-              return <TR key={i}><TD style={font(700, 14)}>{r.region}</TD><TD style={font(700, 14)}>{r.milestone}萬</TD><TD style={font(700, 14)}>{r.actual}萬</TD>
+              const draft = drafts[r.region] || {};
+              const t = targets[r.region] || {};
+              return <TR key={i}>
+                <TD style={font(700, 14)}>{r.region}</TD>
+                <TD style={font(700, 14)}>
+                  {editMode ? (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input type="number" value={draft.milestone_revenue !== undefined ? draft.milestone_revenue : (t.milestone_revenue || r.milestone || '')}
+                        onChange={e => setDrafts(prev => ({ ...prev, [r.region]: { ...( prev[r.region] || { milestone_sign_rate: t.milestone_sign_rate || '' }), milestone_revenue: e.target.value } }))}
+                        onWheel={e => e.target.blur()}
+                        placeholder="萬" style={{ width: 80, ...font(600, 13), border: `1px solid ${C.gold}`, borderRadius: 3, padding: '3px 6px' }} />
+                      <input value={draft.milestone_sign_rate !== undefined ? draft.milestone_sign_rate : (t.milestone_sign_rate || '')}
+                        onChange={e => setDrafts(prev => ({ ...prev, [r.region]: { ...(prev[r.region] || { milestone_revenue: t.milestone_revenue || r.milestone || '' }), milestone_sign_rate: e.target.value } }))}
+                        placeholder="簽約率%" style={{ width: 60, ...font(600, 12), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '3px 6px' }} />
+                    </div>
+                  ) : r.milestone ? `${r.milestone}萬` : '—'}
+                </TD>
+                <TD style={font(700, 14)}>{r.actual}萬</TD>
                 <TD><span style={{ ...font(800, 15), color: yearRate >= 50 ? C.moss : yearRate >= 25 ? C.darkGold : C.rust }}>{yearRate}%</span></TD>
                 <TD><span style={{ ...font(800, 15), color: monthRate >= 60 ? C.moss : monthRate >= 30 ? C.darkGold : C.rust }}>{r.totalRate}</span></TD>
                 <TD style={{ ...font(700, 14), color: C.darkGold }}>{r.signRate || '—'}</TD>
                 <TD style={font(600, 13)}>{r.monthRevenue}萬</TD>
-                <TD style={{ ...font(600, 13), color: C.steel }}>{r.monthRate}</TD></TR>;
+                <TD style={{ ...font(600, 13), color: C.steel }}>{r.monthRate}</TD>
+              </TR>;
             })}
-            <tr style={{ background: C.paleGold }}><TD style={font(800, 14)}>合計</TD><TD style={font(800, 14)}>{total.milestone}萬</TD><TD style={font(800, 14)}>{total.actual}萬</TD>
-              <TD style={{ ...font(800, 16), color: C.darkGold }}>{total.milestone > 0 ? (total.actual / total.milestone * 100).toFixed(1) : 0}%</TD>
+            <tr style={{ background: C.paleGold }}><TD style={font(800, 14)}>合計</TD><TD style={font(800, 14)}>{totalMilestone}萬</TD><TD style={font(800, 14)}>{total.actual}萬</TD>
+              <TD style={{ ...font(800, 16), color: C.darkGold }}>{totalMilestone > 0 ? (total.actual / totalMilestone * 100).toFixed(1) : 0}%</TD>
               <TD style={{ ...font(800, 16), color: C.darkGold }}>{total.totalRate}</TD><TD /><TD style={font(800, 14)}>{total.monthRevenue}萬</TD><TD style={{ ...font(800, 13), color: C.darkGold }}>{total.monthRate}</TD></tr>
           </tbody>
         </table>
@@ -434,8 +504,7 @@ export default function App() {
   const [projectNotes, setProjectNotes] = useState({}); // { case_no: { note, is_abnormal } }
   const [noteInputs, setNoteInputs] = useState({}); // controlled note input values for 02 block
   const [caseNotes, setCaseNotes] = useState({}); // { case_id: note } for 01 block
-  const [annualTarget, setAnnualTarget] = useState(null); // { milestone_revenue, milestone_sign_rate }
-  const [annualEdit, setAnnualEdit] = useState(null); // 編輯中草稿
+  const [annualTarget, setAnnualTarget] = useState(null); // { milestone_revenue, milestone_sign_rate } from Supabase
 
   useEffect(() => {
     fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {});
@@ -474,7 +543,6 @@ export default function App() {
         (Array.isArray(caseNotesData) ? caseNotesData : []).forEach(r => { cn[r.case_id] = r.note; });
         setCaseNotes(cn);
         setAnnualTarget(annualData || null);
-        setAnnualEdit(null);
         setLoading(false);
       }).catch(err => { console.error('載入失敗:', err); setLoading(false); setData({ error: '載入超時，請重新整理' }); });
     }
@@ -512,14 +580,6 @@ export default function App() {
   const deleteExpected = async (id) => {
     await fetch(`/api/expected/${id}`, { method: 'DELETE' });
     setExpectedSigns(prev => prev.filter(s => s.id !== id));
-  };
-
-  const saveAnnualTarget = async (draft) => {
-    const res = await fetch('/api/annualtargets', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ region, ...draft }) });
-    const saved = await res.json();
-    const record = Array.isArray(saved) ? saved[0] : saved;
-    if (record && record.id) { setAnnualTarget(record); setAnnualEdit(null); }
   };
 
   const setPaymentDraft = (caseNo, field, value) => {
@@ -720,7 +780,7 @@ export default function App() {
 
         {/* ===== MAIN ===== */}
         <main style={{ flex: 1, padding: isMobile ? '16px 12px' : '28px 32px', paddingBottom: isMobile ? 76 : undefined, overflowX: 'hidden' }}>
-          {view === 'dashboard' ? <Dashboard data={allData} /> : view === 'accounts' ? <AccountsPage auth={auth} /> : loading ? (
+          {view === 'dashboard' ? <Dashboard data={allData} onAllDataRefresh={() => fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {})} /> : view === 'accounts' ? <AccountsPage auth={auth} /> : loading ? (
             <div style={{ ...bodyFont(500, 14), textAlign: 'center', padding: 80, color: C.steel }}>載入中...</div>
           ) : (
             <>
@@ -1001,39 +1061,25 @@ export default function App() {
                     {(() => {
                       const yt = data?.yearTarget;
                       const at = annualTarget;
-                      const draft = annualEdit;
-                      const isEditing = draft !== null;
-                      const milestoneRev = isEditing ? draft.milestone_revenue : (at?.milestone_revenue ?? (yt?.milestone?.revenue ? parseInt(yt.milestone.revenue) : ''));
-                      const milestoneRate = isEditing ? draft.milestone_sign_rate : (at?.milestone_sign_rate ?? yt?.milestone?.signRate ?? '');
+                      if (!yt && !at) return null;
+                      const milestoneRev = at?.milestone_revenue || yt?.milestone?.revenue || '';
+                      const milestoneRate = at?.milestone_sign_rate || yt?.milestone?.signRate || '';
                       return (
                         <div style={{ flex: '1 1 340px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-                            <div style={{ ...font(700, 9), letterSpacing: '0.1em', textTransform: 'uppercase', color: C.steel }}>年度目標</div>
-                            {!isEditing && <button onClick={() => setAnnualEdit({ milestone_revenue: at?.milestone_revenue || '', milestone_sign_rate: at?.milestone_sign_rate || '' })} style={{ ...font(600, 10), padding: '2px 8px', borderRadius: 2, border: `1px solid ${C.ash}`, background: C.bone, color: C.steel, cursor: 'pointer' }}>編輯</button>}
-                          </div>
+                          <div style={{ ...font(700, 9), letterSpacing: '0.1em', textTransform: 'uppercase', color: C.steel, marginBottom: 10 }}>年度目標</div>
                           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead><tr><TH /><TH>營業額(萬)</TH><TH>簽約率</TH></tr></thead>
                             <tbody>
                               <TR>
                                 <TD style={{ ...font(800, 13), color: C.darkGold }}>里程碑</TD>
-                                <TD style={font(800, 18)}>
-                                  {isEditing ? <input type="number" value={draft.milestone_revenue} onChange={e => setAnnualEdit(p => ({ ...p, milestone_revenue: e.target.value }))} onWheel={e => e.target.blur()} style={{ width: 100, ...font(600, 13), border: `1px solid ${C.gold}`, borderRadius: 3, padding: '3px 6px' }} /> : (milestoneRev ? `${milestoneRev}萬` : '—')}
-                                </TD>
-                                <TD style={font(600, 13)}>
-                                  {isEditing ? <input value={draft.milestone_sign_rate} onChange={e => setAnnualEdit(p => ({ ...p, milestone_sign_rate: e.target.value }))} placeholder="如 35%" style={{ width: 70, ...font(600, 12), border: `1px solid ${C.gold}`, borderRadius: 3, padding: '3px 6px' }} /> : (milestoneRate || '—')}
-                                </TD>
+                                <TD style={font(800, 18)}>{milestoneRev ? `${milestoneRev}萬` : '—'}</TD>
+                                <TD style={font(600, 13)}>{milestoneRate || '—'}</TD>
                               </TR>
                               {yt && [{ l: '實際現狀', d: yt.actual, c: C.moss }, { l: '差異數', d: yt.diff, c: C.rust }, { l: '每月須達成', d: yt.monthlyTarget, c: C.ember }].map(r => (
                                 <TR key={r.l}><TD style={{ ...font(800, 13), color: r.c }}>{r.l}</TD><TD style={font(800, 18)}>{r.d.revenue}</TD><TD style={font(600, 13)}>{r.d.signRate}</TD></TR>
                               ))}
                             </tbody>
                           </table>
-                          {isEditing && (
-                            <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
-                              <button onClick={() => saveAnnualTarget(draft)} style={{ ...font(700, 12), padding: '5px 16px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron }}>儲存</button>
-                              <button onClick={() => setAnnualEdit(null)} style={{ ...font(600, 12), padding: '5px 12px', borderRadius: 3, border: `1px solid ${C.ash}`, background: C.bone, color: C.steel, cursor: 'pointer' }}>取消</button>
-                            </div>
-                          )}
                         </div>
                       );
                     })()}
