@@ -124,59 +124,84 @@ async function getSheets() {
   return sheetsClient;
 }
 
-const REGIONS = {
-  '台北': {
-    caseSheet: '125VgLseiFPJGEpNa_9YtkDHbccI83SfoURDP9o0jCT8',
-    workSheet: '1opyfWp6KtDmTtjoXTU0QtBi9BsP4xlOs5uYeR41zspA',
-    caseTab: '進度統計',
-    weeklySheet: '10iIaWkEqjCjT26rcatYd2b0XGhM0X45FC2-BtdPvqD0',
-  },
-  '台中': {
-    caseSheet: '14br_f5FdfPdArlmqKQw8h6FlpAPVglBZ4FN4T6bMyb4',
-    workSheet: '1vNB-JtXW65WLP7LcEyo6JFHBPZ4S7M18O5VBAC4Id6I',
-    caseTab: '案件追蹤表',
-    weeklySheet: '1OxqNikGrbNddFEI8L96qKEnXfEs1Ry3s9DFDsrk_pwE',
-  },
-  '桃園': {
-    caseSheet: '1E1G4qnmS4-VVJaPwWoHXVuXlPadWl5DFZ6J_MhQwD-U',
-    workSheet: '1G55jJSUY6eaAP1MtOBTm9xyiJY-NlI_CmjEq6FSHZX8',
-    caseTab: '進度統計',
-    weeklySheet: '1AtGwkhK2z_pbVzmXtP3NQuoR5l4lzkvaVgvy5BPY_fs',
-  },
-  '新竹': {
-    caseSheet: '1Bf8tEYeyUDUL2caynb5NLF85_1J5H7tv4TxtMvznnxY',
-    workSheet: '1--Txe1YbdOHkN3hbqA4VRtWvGQpr_bidfvMA1lJ1aqI',
-    caseTab: '進度統計',
-    weeklySheet: '1WGbeudud4QnLbZdq_WuOKq81fQAyGKrqIsqnQFxHPPI',
-  },
-  '龜山': {
-    caseSheet: '1VbvliGjs3x4_dwbc4nD6yJJcz0S-ULakgCnj3WiAuqc',
-    workSheet: '1UfH1GLJsbrYOg0WuE8OMJulmUrMPc6rLdnCa0OV9c4Y',
-    caseTab: '進度統計',
-    weeklySheet: '1hFUAlMH42_b9D_5nTsIJXFhMhbN58Ud7ZTkY6VAnytU',
-  },
-  '框框': {
-    caseSheet: '1MLXs8Y5fbV6tbxlFTDxdM5pbovyiMKmxXh6f0UXaVRo',
-    workSheet: '1YJ7g1fNq3xp-vsP4x7OtKlW6ICtxxBzHXVdjogStx-Q',
-    caseTab: '進度統計',
-    weeklySheet: '1GMdAev1ISrLosOz5w_PdvJeo9uugCL8z4klmmr_rq9s',
-  },
-  '板橋': {
-    caseSheet: null,
-    workSheet: '1JDC69yUIvXcu-MCO8bQ2MxoUZmxM6YBtTMrPjYd_7HM',
-    caseTab: null,
-    weeklySheet: null,
-  },
-  '水湳': {
-    caseSheet: '1TAkax9fp3QtEvUkZIhfYSr_cxXM_Lc-0mOt8sn9P6F0',
-    workSheet: '1Bnkz8_YOPEDlcdI2swV8x8BQ7CoxKW46U4OsanCTYtY',
-    caseTab: '進度統計',
-    weeklySheet: '1Z8pjJquW5_UjTS-6rS_5jTqaE9UBaLuewzIYjVvpsGA',
-  },
-};
+let REGIONS = {};
+
+async function loadRegions() {
+  try {
+    const rows = await supaGet('tb_regions', '?is_active=eq.true&order=sort_order.asc');
+    const map = {};
+    (Array.isArray(rows) ? rows : []).forEach(r => {
+      map[r.name] = { caseSheet: r.case_sheet || null, workSheet: r.work_sheet || null, caseTab: r.case_tab || '進度統計', weeklySheet: null };
+    });
+    REGIONS = map;
+    console.log(`[regions] 載入 ${Object.keys(REGIONS).length} 個分店`);
+  } catch (e) {
+    console.error('[regions] 載入失敗:', e.message);
+  }
+}
 
 app.get('/api/regions', (req, res) => {
   res.json(Object.keys(REGIONS));
+});
+
+// ===== 分店管理 API =====
+app.get('/api/admin/serviceaccount', (req, res) => {
+  try {
+    let email = '';
+    if (process.env.GOOGLE_CREDENTIALS) {
+      email = JSON.parse(process.env.GOOGLE_CREDENTIALS).client_email || '';
+    } else {
+      const keyPath = path.join(__dirname, 'key', 'huaaibot-key.json');
+      try { email = JSON.parse(require('fs').readFileSync(keyPath, 'utf8')).client_email || ''; } catch {}
+    }
+    res.json({ email });
+  } catch (e) { res.json({ email: '' }); }
+});
+
+app.get('/api/admin/regions', async (req, res) => {
+  try {
+    const data = await supaGet('tb_regions', '?order=sort_order.asc');
+    res.json(Array.isArray(data) ? data : []);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/admin/regions', async (req, res) => {
+  try {
+    const { name, case_sheet, work_sheet, case_tab, sort_order } = req.body;
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/tb_regions`, {
+      method: 'POST',
+      headers: { ...supaServiceHeaders, Prefer: 'return=representation' },
+      body: JSON.stringify({ name, case_sheet: case_sheet || null, work_sheet: work_sheet || null, case_tab: case_tab || '進度統計', sort_order: sort_order || 0 }),
+    });
+    const saved = await r.json();
+    await loadRegions();
+    res.json(saved);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/admin/regions/:id', async (req, res) => {
+  try {
+    const r = await fetch(`${SUPABASE_URL}/rest/v1/tb_regions?id=eq.${req.params.id}`, {
+      method: 'PATCH',
+      headers: { ...supaServiceHeaders, Prefer: 'return=representation' },
+      body: JSON.stringify(req.body),
+    });
+    const saved = await r.json();
+    await loadRegions();
+    res.json(saved);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/admin/regions/:id', async (req, res) => {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/tb_regions?id=eq.${req.params.id}`, {
+      method: 'PATCH',
+      headers: { ...supaServiceHeaders, Prefer: 'return=representation' },
+      body: JSON.stringify({ is_active: false }),
+    });
+    await loadRegions();
+    res.json({ ok: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ===== 整合 API: 一次取得某地區的完整週會資料 =====
@@ -808,6 +833,7 @@ app.get('/{*any}', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3001;
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '0.0.0.0', async () => {
+  await loadRegions();
   console.log(`Server running at http://localhost:${PORT}`);
 });

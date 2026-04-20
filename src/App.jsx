@@ -111,6 +111,134 @@ function RegionCheckboxes({ selected, onChange }) {
   );
 }
 
+// ======= REGIONS ADMIN PAGE =======
+function RegionsPage() {
+  const [regions, setRegions] = useState([]);
+  const [saEmail, setSaEmail] = useState('');
+  const [editId, setEditId] = useState(null);
+  const [editDraft, setEditDraft] = useState({});
+  const [form, setForm] = useState({ name: '', case_sheet: '', work_sheet: '', case_tab: '進度統計' });
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const load = () => {
+    fetch('/api/admin/regions').then(r => r.json()).then(d => setRegions(Array.isArray(d) ? d : []));
+    fetch('/api/admin/serviceaccount').then(r => r.json()).then(d => setSaEmail(d.email || ''));
+  };
+  useEffect(() => { load(); }, []);
+
+  const save = async (id, body) => {
+    setBusy(true);
+    await fetch(`/api/admin/regions/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    setEditId(null); load(); setBusy(false);
+  };
+
+  const add = async () => {
+    if (!form.name.trim()) return;
+    setBusy(true);
+    await fetch('/api/admin/regions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...form, sort_order: regions.length + 1 }) });
+    setForm({ name: '', case_sheet: '', work_sheet: '', case_tab: '進度統計' }); load(); setBusy(false);
+  };
+
+  const deactivate = async (id) => {
+    if (!window.confirm('確定停用此分店？停用後導覽列不會顯示，資料仍保留。')) return;
+    await fetch(`/api/admin/regions/${id}`, { method: 'DELETE' }); load();
+  };
+
+  const restore = async (id) => {
+    await fetch(`/api/admin/regions/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_active: true }) }); load();
+  };
+
+  const copyEmail = () => {
+    navigator.clipboard.writeText(saEmail);
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+
+  const inpStyle = { ...bodyFont(400, 13), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '6px 10px', background: C.bone, width: '100%' };
+
+  return (
+    <div style={fadeIn}>
+      <div style={{ ...font(800, 24), color: C.iron, marginBottom: 4 }}>分店管理</div>
+      <div style={{ ...bodyFont(500, 13), color: C.steel, marginBottom: 24 }}>新增分店、設定 Google Sheet 連結</div>
+
+      {/* Service Account 信箱 */}
+      <div style={{ background: C.bone, borderRadius: 4, padding: 20, marginBottom: 24 }}>
+        <div style={{ ...font(700, 10), letterSpacing: '0.1em', textTransform: 'uppercase', color: C.steel, marginBottom: 8 }}>Google Sheet 授權說明</div>
+        <div style={{ ...bodyFont(400, 13), color: C.iron, lineHeight: 1.8, marginBottom: 12 }}>
+          新分店的 Google Sheet 必須共用給以下 Service Account 信箱，權限設為「<strong>檢視者</strong>」：
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ ...font(600, 13), background: C.stone, borderRadius: 3, padding: '8px 14px', flex: 1, letterSpacing: '0.01em', color: C.iron, wordBreak: 'break-all' }}>{saEmail || '載入中...'}</div>
+          <button onClick={copyEmail} style={{ ...font(700, 12), padding: '8px 16px', borderRadius: 3, border: 'none', cursor: 'pointer', background: copied ? C.moss : C.gold, color: copied ? '#fff' : C.iron, whiteSpace: 'nowrap' }}>{copied ? '已複製' : '複製'}</button>
+        </div>
+        <div style={{ ...bodyFont(400, 12), color: C.steel, marginTop: 10, lineHeight: 1.7 }}>
+          共用後，複製 Google Sheet 網址中 <code>/d/</code> 與 <code>/edit</code> 之間的 ID，填入下方欄位。
+        </div>
+      </div>
+
+      {/* 分店列表 */}
+      <div style={{ background: C.bone, borderRadius: 4, overflow: 'auto', marginBottom: 24 }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+          <thead><tr><TH>分店名稱</TH><TH>案件追蹤表 Sheet ID</TH><TH>工程工期表 Sheet ID</TH><TH>案件分頁名</TH><TH>狀態</TH><TH></TH></tr></thead>
+          <tbody>
+            {regions.map(r => editId === r.id ? (
+              <TR key={r.id} style={{ background: C.warmCream }}>
+                <TD><input value={editDraft.name ?? r.name} onChange={e => setEditDraft(p => ({ ...p, name: e.target.value }))} style={{ ...inpStyle, width: 80 }} /></TD>
+                <TD><input value={editDraft.case_sheet ?? (r.case_sheet || '')} onChange={e => setEditDraft(p => ({ ...p, case_sheet: e.target.value }))} style={{ ...inpStyle, width: 200, fontFamily: 'monospace', fontSize: 11 }} placeholder="Sheet ID" /></TD>
+                <TD><input value={editDraft.work_sheet ?? (r.work_sheet || '')} onChange={e => setEditDraft(p => ({ ...p, work_sheet: e.target.value }))} style={{ ...inpStyle, width: 200, fontFamily: 'monospace', fontSize: 11 }} placeholder="Sheet ID" /></TD>
+                <TD><input value={editDraft.case_tab ?? (r.case_tab || '進度統計')} onChange={e => setEditDraft(p => ({ ...p, case_tab: e.target.value }))} style={{ ...inpStyle, width: 90 }} /></TD>
+                <TD />
+                <TD style={{ whiteSpace: 'nowrap' }}>
+                  <button onClick={() => save(r.id, editDraft)} disabled={busy} style={{ ...font(700, 11), padding: '4px 12px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron, marginRight: 6 }}>儲存</button>
+                  <button onClick={() => setEditId(null)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.steel }}>取消</button>
+                </TD>
+              </TR>
+            ) : (
+              <TR key={r.id} style={{ opacity: r.is_active ? 1 : 0.45 }}>
+                <TD style={font(700, 14)}>{r.name}</TD>
+                <TD style={{ fontFamily: 'monospace', fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.case_sheet || '—'}</TD>
+                <TD style={{ fontFamily: 'monospace', fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.work_sheet || '—'}</TD>
+                <TD style={font(400, 12)}>{r.case_tab || '—'}</TD>
+                <TD><span style={{ ...font(700, 10), padding: '2px 8px', borderRadius: 2, background: r.is_active ? C.mossLight : C.stone, color: r.is_active ? C.moss : C.fog }}>{r.is_active ? '啟用' : '停用'}</span></TD>
+                <TD style={{ whiteSpace: 'nowrap' }}>
+                  <button onClick={() => { setEditId(r.id); setEditDraft({}); }} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.steel, marginRight: 6 }}>編輯</button>
+                  {r.is_active
+                    ? <button onClick={() => deactivate(r.id)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.rust }}>停用</button>
+                    : <button onClick={() => restore(r.id)} style={{ ...font(600, 11), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ash}`, cursor: 'pointer', background: C.bone, color: C.moss }}>恢復</button>}
+                </TD>
+              </TR>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 新增分店 */}
+      <div style={{ background: C.bone, borderRadius: 4, padding: 20 }}>
+        <div style={{ ...font(700, 10), letterSpacing: '0.1em', textTransform: 'uppercase', color: C.steel, marginBottom: 14 }}>新增分店</div>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ flex: '0 0 100px' }}>
+            <div style={{ ...font(700, 10), color: C.steel, marginBottom: 4 }}>分店名稱 *</div>
+            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="如：台南" style={inpStyle} />
+          </div>
+          <div style={{ flex: '1 1 220px' }}>
+            <div style={{ ...font(700, 10), color: C.steel, marginBottom: 4 }}>案件追蹤表 Sheet ID</div>
+            <input value={form.case_sheet} onChange={e => setForm(p => ({ ...p, case_sheet: e.target.value }))} placeholder="1aBcD..." style={{ ...inpStyle, fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+          <div style={{ flex: '1 1 220px' }}>
+            <div style={{ ...font(700, 10), color: C.steel, marginBottom: 4 }}>工程工期表 Sheet ID</div>
+            <input value={form.work_sheet} onChange={e => setForm(p => ({ ...p, work_sheet: e.target.value }))} placeholder="1xYzW..." style={{ ...inpStyle, fontFamily: 'monospace', fontSize: 12 }} />
+          </div>
+          <div style={{ flex: '0 0 110px' }}>
+            <div style={{ ...font(700, 10), color: C.steel, marginBottom: 4 }}>案件分頁名稱</div>
+            <input value={form.case_tab} onChange={e => setForm(p => ({ ...p, case_tab: e.target.value }))} placeholder="進度統計" style={inpStyle} />
+          </div>
+          <button onClick={add} disabled={busy || !form.name.trim()} style={{ ...font(700, 13), padding: '8px 20px', borderRadius: 3, border: 'none', cursor: 'pointer', background: C.gold, color: C.iron, flexShrink: 0, opacity: (!form.name.trim() || busy) ? 0.5 : 1 }}>+ 新增</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AccountsPage({ auth }) {
   const [users, setUsers] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -736,7 +864,10 @@ export default function App() {
               <span style={{ ...bodyFont(500, 11), color: 'rgba(255,255,255,0.25)' }}>{new Date().toLocaleDateString('zh-TW', { month: 'long', day: 'numeric' })}</span>
               <button onClick={logout} style={{ ...font(600, 10), padding: '4px 10px', borderRadius: 3, border: `1px solid ${C.ironMid}`, cursor: 'pointer', background: 'none', color: 'rgba(255,255,255,0.35)', marginLeft: 4 }}>{auth.name} · 登出</button>
               {isAdmin && (
-                <button onClick={() => setView('accounts')} title="帳號管理" style={{ ...font(600, 14), padding: '4px 8px', borderRadius: 3, border: `1px solid ${view === 'accounts' ? C.gold : C.ironMid}`, cursor: 'pointer', background: view === 'accounts' ? 'rgba(249,185,27,0.15)' : 'none', color: view === 'accounts' ? C.gold : 'rgba(255,255,255,0.4)', marginLeft: 2 }}>⚙</button>
+                <>
+                  <button onClick={() => setView('regions')} title="分店管理" style={{ ...font(600, 14), padding: '4px 8px', borderRadius: 3, border: `1px solid ${view === 'regions' ? C.gold : C.ironMid}`, cursor: 'pointer', background: view === 'regions' ? 'rgba(249,185,27,0.15)' : 'none', color: view === 'regions' ? C.gold : 'rgba(255,255,255,0.4)', marginLeft: 2 }}>🏪</button>
+                  <button onClick={() => setView('accounts')} title="帳號管理" style={{ ...font(600, 14), padding: '4px 8px', borderRadius: 3, border: `1px solid ${view === 'accounts' ? C.gold : C.ironMid}`, cursor: 'pointer', background: view === 'accounts' ? 'rgba(249,185,27,0.15)' : 'none', color: view === 'accounts' ? C.gold : 'rgba(255,255,255,0.4)', marginLeft: 2 }}>⚙</button>
+                </>
               )}
             </div>
           )}
@@ -780,7 +911,7 @@ export default function App() {
 
         {/* ===== MAIN ===== */}
         <main style={{ flex: 1, padding: isMobile ? '16px 12px' : '28px 32px', paddingBottom: isMobile ? 76 : undefined, overflowX: 'hidden' }}>
-          {view === 'dashboard' ? <Dashboard data={allData} onAllDataRefresh={() => fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {})} /> : view === 'accounts' ? <AccountsPage auth={auth} /> : loading ? (
+          {view === 'dashboard' ? <Dashboard data={allData} onAllDataRefresh={() => fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {})} /> : view === 'accounts' ? <AccountsPage auth={auth} /> : view === 'regions' ? <RegionsPage /> : loading ? (
             <div style={{ ...bodyFont(500, 14), textAlign: 'center', padding: 80, color: C.steel }}>載入中...</div>
           ) : (
             <>
