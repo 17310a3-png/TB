@@ -1048,7 +1048,7 @@ export default function App() {
         </nav>}
 
         {/* ===== MAIN ===== */}
-        <main style={{ flex: 1, padding: isMobile ? '16px 12px' : '28px 32px', paddingBottom: isMobile ? 76 : undefined, overflowX: 'clip' }}>
+        <main style={{ flex: 1, minWidth: 0, padding: isMobile ? '16px 12px' : '28px 32px', paddingBottom: isMobile ? 76 : undefined }}>
           {view === 'dashboard' ? <Dashboard data={allData} onAllDataRefresh={() => fetch('/api/allregions').then(r => r.json()).then(setAllData).catch(() => {})} /> : view === 'accounts' ? <AccountsPage auth={auth} /> : view === 'regions' ? <RegionsPage onChanged={refreshRegionList} /> : view === 'changepass' ? <ChangePasswordPage auth={auth} onBack={() => setView(auth.role === 'admin' ? 'dashboard' : 'meeting')} /> : loading ? (
             <div style={{ ...bodyFont(500, 14), textAlign: 'center', padding: 80, color: C.steel }}>載入中...</div>
           ) : (
