@@ -788,9 +788,22 @@ app.post('/api/expected', async (req, res) => {
     const data = await supaInsert('tb_expected_signs', {
       region, region_id, address: address || '',
       amount: amount || '', expected_date: expected_date || '', note: note || '',
+      is_signed: false,
       meeting_date: new Date().toISOString().slice(0, 10),
     });
     res.json(data);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.patch('/api/expected/:id', async (req, res) => {
+  try {
+    const updates = {};
+    ['address', 'amount', 'expected_date', 'note', 'is_signed'].forEach(k => {
+      if (req.body[k] !== undefined) updates[k] = req.body[k];
+    });
+    if (Object.keys(updates).length === 0) return res.json({ ok: true, noop: true });
+    const data = await supaPatch('tb_expected_signs', req.params.id, updates);
+    res.json(Array.isArray(data) ? (data[0] || {}) : data);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

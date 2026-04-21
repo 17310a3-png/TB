@@ -721,6 +721,8 @@ export default function App() {
   const [paymentEdit, setPaymentEdit] = useState({}); // 未儲存的草稿值
   const [expectedSigns, setExpectedSigns] = useState([]);
   const [signInput, setSignInput] = useState({ address: '', amount: '', expected_date: '', note: '' });
+  const [editingSignId, setEditingSignId] = useState(null);
+  const [editSignDraft, setEditSignDraft] = useState({ address: '', amount: '', expected_date: '', note: '' });
   const [projectNotes, setProjectNotes] = useState({}); // { case_no: { note, is_abnormal } }
   const [noteInputs, setNoteInputs] = useState({}); // controlled note input values for 02 block
   const [caseNotes, setCaseNotes] = useState({}); // { case_id: note } for 01 block
@@ -804,6 +806,45 @@ export default function App() {
   const deleteExpected = async (id) => {
     await fetch(`/api/expected/${id}`, { method: 'DELETE' });
     setExpectedSigns(prev => prev.filter(s => s.id !== id));
+  };
+
+  const toggleSignedExpected = async (s) => {
+    const next = !s.is_signed;
+    setExpectedSigns(prev => prev.map(x => x.id === s.id ? { ...x, is_signed: next } : x));
+    try {
+      await fetch(`/api/expected/${s.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_signed: next }),
+      });
+    } catch (e) {
+      setExpectedSigns(prev => prev.map(x => x.id === s.id ? { ...x, is_signed: s.is_signed } : x));
+    }
+  };
+
+  const startEditExpected = (s) => {
+    setEditingSignId(s.id);
+    setEditSignDraft({
+      address: s.address || '',
+      amount: s.amount || '',
+      expected_date: s.expected_date || '',
+      note: s.note || '',
+    });
+  };
+
+  const cancelEditExpected = () => {
+    setEditingSignId(null);
+    setEditSignDraft({ address: '', amount: '', expected_date: '', note: '' });
+  };
+
+  const saveEditExpected = async (id) => {
+    const payload = { ...editSignDraft };
+    const res = await fetch(`/api/expected/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const saved = await res.json().catch(() => null);
+    setExpectedSigns(prev => prev.map(x => x.id === id ? { ...x, ...payload, ...(saved && saved.id ? saved : {}) } : x));
+    cancelEditExpected();
   };
 
   const setPaymentDraft = (caseNo, field, value) => {
@@ -1226,37 +1267,85 @@ export default function App() {
 
               {/* 05 預計簽約 */}
               <Block id="expected" num="05" title="預計簽約" sub="設計業務部">
-                {/* 統計指標 */}
-                <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
-                  <Metric label="預計件數" value={`${expectedSigns.length}件`} />
-                  <Metric label="合計金額" value={`${expectedSigns.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0)}萬`} highlight />
-                </div>
+                {(() => {
+                  const totalAmount = expectedSigns.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
+                  const signedRows = expectedSigns.filter(x => x.is_signed);
+                  const signedAmount = signedRows.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0);
+                  const smallInput = { ...bodyFont(400, 12), border: `1px solid ${C.ash}`, borderRadius: 3, padding: '4px 6px', background: C.bone, width: '100%', boxSizing: 'border-box' };
+                  return (
+                    <>
+                      {/* 統計指標 */}
+                      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+                        <Metric label="預計件數" value={`${expectedSigns.length}件`} />
+                        <Metric label="合計金額" value={`${totalAmount}萬`} highlight />
+                        <Metric label="已簽約件數" value={`${signedRows.length}件`} />
+                        <Metric label="已簽約金額" value={`${signedAmount}萬`} />
+                      </div>
 
-                {/* 清單 */}
-                {expectedSigns.length > 0 && (
-                  <div style={{ overflow: 'auto', marginBottom: 16 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                      <thead><tr>{['#', '工程地址', '報價金額(萬)', '預計簽約日', '備註', ''].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
-                      <tbody>
-                        {expectedSigns.map((s, i) => (
-                          <TR key={s.id}>
-                            <TD style={font(700, 13)}>{i + 1}</TD>
-                            <TD style={{ maxWidth: 220, lineHeight: 1.5 }}>{s.address}</TD>
-                            <TD style={{ ...font(800, 15), color: C.darkGold }}>{s.amount ? `${s.amount}萬` : '—'}</TD>
-                            <TD style={font(400, 12)}>{s.expected_date || '—'}</TD>
-                            <TD style={{ color: C.steel, fontSize: 12, maxWidth: 160 }}>{s.note}</TD>
-                            <TD><button onClick={() => deleteExpected(s.id)} style={{ background: 'none', border: 'none', color: C.fog, cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button></TD>
-                          </TR>
-                        ))}
-                        <tr style={{ background: C.paleGold }}>
-                          <td colSpan={2} style={{ ...font(800, 13), padding: '10px 12px', color: C.iron }}>合計</td>
-                          <td style={{ ...font(800, 16), padding: '10px 12px', color: C.darkGold }}>{expectedSigns.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0)}萬</td>
-                          <td colSpan={3} style={{ padding: '10px 12px' }} />
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+                      {/* 清單 */}
+                      {expectedSigns.length > 0 && (
+                        <div style={{ overflow: 'auto', marginBottom: 16 }}>
+                          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead><tr>{['#', '簽約', '工程地址', '報價金額(萬)', '預計簽約日', '備註', ''].map(h => <TH key={h}>{h}</TH>)}</tr></thead>
+                            <tbody>
+                              {expectedSigns.map((s, i) => {
+                                const editing = editingSignId === s.id;
+                                const rowBg = s.is_signed ? C.mossLight : undefined;
+                                return (
+                                  <TR key={s.id} style={rowBg ? { background: rowBg } : undefined}>
+                                    <TD style={font(700, 13)}>{i + 1}</TD>
+                                    <TD>
+                                      <input type="checkbox" checked={!!s.is_signed} onChange={() => toggleSignedExpected(s)}
+                                        style={{ width: 18, height: 18, cursor: 'pointer', accentColor: C.moss }} />
+                                    </TD>
+                                    <TD style={{ maxWidth: 240, lineHeight: 1.5 }}>
+                                      {editing
+                                        ? <input value={editSignDraft.address} onChange={e => setEditSignDraft(p => ({ ...p, address: e.target.value }))} style={smallInput} />
+                                        : <span style={s.is_signed ? { color: C.moss, textDecoration: 'line-through', textDecorationColor: C.moss } : undefined}>{s.address}</span>}
+                                    </TD>
+                                    <TD style={{ ...font(800, 15), color: C.darkGold }}>
+                                      {editing
+                                        ? <input value={editSignDraft.amount} onChange={e => setEditSignDraft(p => ({ ...p, amount: e.target.value }))} style={{ ...smallInput, width: 80 }} />
+                                        : (s.amount ? `${s.amount}萬` : '—')}
+                                    </TD>
+                                    <TD style={font(400, 12)}>
+                                      {editing
+                                        ? <input value={editSignDraft.expected_date} onChange={e => setEditSignDraft(p => ({ ...p, expected_date: e.target.value }))} style={{ ...smallInput, width: 90 }} />
+                                        : (s.expected_date || '—')}
+                                    </TD>
+                                    <TD style={{ color: C.steel, fontSize: 12, maxWidth: 180 }}>
+                                      {editing
+                                        ? <input value={editSignDraft.note} onChange={e => setEditSignDraft(p => ({ ...p, note: e.target.value }))} style={smallInput} />
+                                        : s.note}
+                                    </TD>
+                                    <TD>
+                                      {editing ? (
+                                        <span style={{ display: 'inline-flex', gap: 4 }}>
+                                          <button onClick={() => saveEditExpected(s.id)} style={{ ...font(700, 11), padding: '3px 8px', border: 'none', borderRadius: 3, cursor: 'pointer', background: C.gold, color: C.iron }}>存</button>
+                                          <button onClick={cancelEditExpected} style={{ ...font(700, 11), padding: '3px 8px', border: `1px solid ${C.ash}`, borderRadius: 3, cursor: 'pointer', background: C.bone, color: C.steel }}>取消</button>
+                                        </span>
+                                      ) : (
+                                        <span style={{ display: 'inline-flex', gap: 6 }}>
+                                          <button onClick={() => startEditExpected(s)} style={{ background: 'none', border: 'none', color: C.steel, cursor: 'pointer', fontSize: 12 }} title="編輯">✎</button>
+                                          <button onClick={() => deleteExpected(s.id)} style={{ background: 'none', border: 'none', color: C.fog, cursor: 'pointer', fontSize: 16, lineHeight: 1 }} title="刪除">×</button>
+                                        </span>
+                                      )}
+                                    </TD>
+                                  </TR>
+                                );
+                              })}
+                              <tr style={{ background: C.paleGold }}>
+                                <td colSpan={3} style={{ ...font(800, 13), padding: '10px 12px', color: C.iron }}>合計</td>
+                                <td style={{ ...font(800, 16), padding: '10px 12px', color: C.darkGold }}>{totalAmount}萬</td>
+                                <td colSpan={3} style={{ ...font(600, 12), padding: '10px 12px', color: C.moss }}>已簽約 {signedAmount}萬</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
 
                 {/* 新增表單 */}
                 <div style={{ background: C.stone, borderRadius: 4, padding: 16 }}>
