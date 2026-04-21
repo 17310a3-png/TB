@@ -30,18 +30,39 @@
       .metric-card > div:last-child { font-size: 20px !important; }
     }
 
-    /* ===== 手機版通用：表格橫向滑動、標題縮小、指定兩欄堆疊 ===== */
+    /* ===== 手機版通用：表格轉卡片佈局、標題縮小、指定兩欄堆疊 ===== */
     @media (max-width: 767px) {
-      /* 表格：給最小寬度，父層 overflow:auto 會啟動橫向滑動，避免欄位擠到重疊 */
-      .block-body table { min-width: 760px; border-collapse: collapse; }
-
-      /* 欄位垂直對齊從上方，讓換行內容不會跟隔壁欄錯位 */
-      .tb-th, .tb-td {
-        vertical-align: top;
-        /* 長字串在框內任意位置斷行、自然撐高 cell 高度 */
+      /* 表格徹底改為卡片佈局：每一 row 一張卡、每個 cell 垂直排列 */
+      .block-body table {
+        display: block;
+        width: 100% !important;
+        min-width: 0 !important;
+        border-collapse: collapse;
+      }
+      .block-body thead { display: none; }
+      .block-body tbody { display: block; }
+      .block-body tr {
+        display: block;
+        padding: 10px 12px;
+        background: #fff;
+        border: 1px solid #e8e4dc;
+        border-radius: 4px;
+        margin-bottom: 8px;
+      }
+      .tb-td {
+        display: block !important;
+        border: none !important;
+        padding: 3px 0 !important;
+        max-width: 100% !important;
         word-break: break-word;
         overflow-wrap: anywhere;
       }
+      /* 內層 div 不再需要 max-width 限制 */
+      .tb-td > div[style*="max-width"] { max-width: 100% !important; }
+      /* textarea / input 在卡片裡撐滿 */
+      .tb-td textarea, .tb-td input[type="text"], .tb-td select { width: 100% !important; box-sizing: border-box; }
+      /* 空格子（比如只是用來對齊的）隱藏 */
+      .tb-td:empty { display: none !important; }
 
       /* 標題列的品牌字縮小、避免被擠出螢幕 */
       .tb-brand { font-size: 14px !important; }
