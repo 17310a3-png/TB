@@ -86,10 +86,29 @@
       }
       /* 讓有 data-label 空值的 cell 仍保留標籤 + "—" 顯示 */
       .tb-td[data-label]:empty::after { content: "—"; color: #c8c3bd; }
-      /* 所有 cell 直接子元素：限寬、容許縮、強制斷行 */
+      /* 所有 cell 直接子元素：限寬、容許縮 */
       .tb-td > *, .tb-td > * * {
         max-width: 100% !important;
         min-width: 0;
+      }
+      /* 長文字欄位（帶 inline max-width 的 div）改成水平滑動：單行顯示、超出可左右滑 */
+      .tb-td > div[style*="max-width"] {
+        max-width: 100% !important;
+        white-space: nowrap !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        overflow-wrap: normal !important;
+        word-break: normal !important;
+        -webkit-overflow-scrolling: touch;
+        /* 滾動條樣式做精緻一點 */
+        scrollbar-width: thin;
+      }
+      .tb-td > div[style*="max-width"]::-webkit-scrollbar {
+        height: 4px;
+      }
+      .tb-td > div[style*="max-width"]::-webkit-scrollbar-thumb {
+        background: #d8d3cc;
+        border-radius: 2px;
       }
       /* 所有 input/textarea/select（含 number 等）全部撐滿卡片，不保留固定寬 */
       .tb-td input, .tb-td textarea, .tb-td select {
