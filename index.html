@@ -53,8 +53,11 @@
       .block-body tr {
         overflow: hidden;
       }
+      /* 用 Grid（非 Flex）才能用 minmax(0,1fr) 保證 value 欄可以縮到 0
+         避免 Safari 的 flex-shrink + min-content 行為讓值欄撐破卡片 */
       .tb-td {
-        display: flex !important;
+        display: grid !important;
+        grid-template-columns: 72px minmax(0, 1fr);
         align-items: baseline;
         gap: 10px;
         border: none !important;
@@ -68,7 +71,6 @@
       /* 每列開頭用 pseudo 元素顯示欄位名稱（透過 data-label） */
       .tb-td[data-label]::before {
         content: attr(data-label);
-        flex: 0 0 72px;
         font-weight: 700;
         font-size: 10px;
         letter-spacing: 0.06em;
@@ -76,8 +78,12 @@
         text-transform: uppercase;
         padding-top: 2px;
       }
-      /* 沒有 data-label 的 cell（例如純按鈕列），不顯示標籤、放置到卡片最下方、滿寬 */
-      .tb-td:not([data-label]) { padding-top: 8px !important; padding-bottom: 2px !important; }
+      /* 沒有 data-label 的 cell（例如純按鈕列）：改成單欄 grid，讓內容滿寬 */
+      .tb-td:not([data-label]) {
+        grid-template-columns: 1fr !important;
+        padding-top: 8px !important;
+        padding-bottom: 2px !important;
+      }
       /* 讓有 data-label 空值的 cell 仍保留標籤 + "—" 顯示 */
       .tb-td[data-label]:empty::after { content: "—"; color: #c8c3bd; }
       /* 所有 cell 直接子元素：限寬、容許縮、強制斷行 */
@@ -85,16 +91,12 @@
         max-width: 100% !important;
         min-width: 0;
       }
-      .tb-td > div, .tb-td > span, .tb-td > a, .tb-td > label {
-        flex: 1 1 auto;
-      }
       /* 所有 input/textarea/select（含 number 等）全部撐滿卡片，不保留固定寬 */
       .tb-td input, .tb-td textarea, .tb-td select {
         width: 100% !important;
         max-width: 100% !important;
         min-width: 0 !important;
         box-sizing: border-box;
-        flex: 1 1 auto;
       }
       /* 真正的空 cell（沒 data-label 也沒內容）直接隱藏 */
       .tb-td:not([data-label]):empty { display: none !important; }
