@@ -58,7 +58,7 @@ const Metric = ({ label, value, highlight, large }) => (
 
 const Block = ({ id, num, title, sub, gold, children }) => (
   <div id={id} className="block-wrap" style={{ marginBottom: 24, borderRadius: 4, background: C.bone, scrollMarginTop: 64, ...fadeIn }}>
-    <div className="block-header" style={{ padding: '18px 28px', background: gold ? `linear-gradient(135deg, ${C.darkGold}, ${C.gold})` : C.iron, display: 'flex', alignItems: 'center', gap: 14, position: 'sticky', top: 0, zIndex: 10, borderRadius: '4px 4px 0 0' }}>
+    <div className="block-header" style={{ padding: '18px 28px', background: gold ? `linear-gradient(135deg, ${C.darkGold}, ${C.gold})` : C.iron, display: 'flex', alignItems: 'center', gap: 14, position: 'sticky', top: 56, zIndex: 10, borderRadius: '4px 4px 0 0' }}>
       {num && <span style={{ ...font(800, 11), color: gold ? C.iron : C.gold, opacity: 0.5, letterSpacing: '0.1em' }}>{num}</span>}
       <div>
         <div style={{ ...font(700, 15), color: gold ? C.iron : '#fff', letterSpacing: '-0.01em' }}>{title}</div>
