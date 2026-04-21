@@ -1085,7 +1085,7 @@ export default function App() {
                       return (
                         <React.Fragment key={i}>
                           <TR onClick={() => c.notes && setExpanded(expanded === i ? null : i)}>
-                            <TD style={font(700, 13)}>{i + 1}</TD><TD style={{ whiteSpace: 'nowrap' }}>{c.fillMonth}</TD><TD style={{ maxWidth: 180 }}>{c.address}</TD>
+                            <TD style={font(700, 13)}>{i + 1}</TD><TD style={{ whiteSpace: 'nowrap' }}>{c.fillMonth}</TD><TD><div style={{ maxWidth: 180, lineHeight: 1.5, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{c.address}</div></TD>
                             <TD style={{ fontWeight: 700 }}>{c.customer}</TD><TD>{c.caseType}</TD><TD>{c.budget}</TD><TD>{c.contact}</TD>
                             <TD><Badge status={c.status} /></TD><TD><Abnormal text={c.abnormal} /></TD>
                             <TD onClick={e => e.stopPropagation()}>
@@ -1130,7 +1130,7 @@ export default function App() {
                         <TR key={i}>
                           <TD style={{ ...font(700, 13), color: C.darkGold }}>{x.caseNo}</TD>
                           <TD><Badge status={x.status} /></TD>
-                          <TD style={{ maxWidth: 220, lineHeight: 1.5 }}>{x.address}</TD>
+                          <TD><div style={{ maxWidth: 220, lineHeight: 1.5, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{x.address}</div></TD>
                           <TD>{x.supervisor}</TD>
                           <TD style={font(400, 12)}>{x.startDate}</TD>
                           <TD style={font(400, 12)}>{x.endDate}</TD>
@@ -1199,7 +1199,7 @@ export default function App() {
                             return <TR key={i}>
                               <TD style={{ ...font(700, 13), color: C.darkGold }}>{x.caseNo}</TD>
                               <TD><Badge status={x.status} /></TD>
-                              <TD style={{ maxWidth: 160, lineHeight: 1.5 }}>{x.address}</TD>
+                              <TD><div style={{ maxWidth: 160, lineHeight: 1.5, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>{x.address}</div></TD>
                               <TD>{x.designer}</TD>
                               <TD style={font(800, 14)}>{x.contractAmount}</TD>
                               <TD><input type="number" value={get('contract_amount', '')} placeholder="0" onChange={e => setPaymentDraft(x.caseNo, 'contract_amount', e.target.value)} onWheel={e => e.target.blur()} style={inputStyle} /></TD>
@@ -1298,10 +1298,12 @@ export default function App() {
                                       <input type="checkbox" checked={!!s.is_signed} onChange={() => toggleSignedExpected(s)}
                                         style={{ width: 18, height: 18, cursor: 'pointer', accentColor: C.moss }} />
                                     </TD>
-                                    <TD style={{ maxWidth: 240, lineHeight: 1.5 }}>
-                                      {editing
-                                        ? <input value={editSignDraft.address} onChange={e => setEditSignDraft(p => ({ ...p, address: e.target.value }))} style={smallInput} />
-                                        : <span style={s.is_signed ? { color: C.moss, textDecoration: 'line-through', textDecorationColor: C.moss } : undefined}>{s.address}</span>}
+                                    <TD>
+                                      <div style={{ maxWidth: 240, lineHeight: 1.5, wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                                        {editing
+                                          ? <input value={editSignDraft.address} onChange={e => setEditSignDraft(p => ({ ...p, address: e.target.value }))} style={smallInput} />
+                                          : <span style={s.is_signed ? { color: C.moss, textDecoration: 'line-through', textDecorationColor: C.moss } : undefined}>{s.address}</span>}
+                                      </div>
                                     </TD>
                                     <TD style={{ ...font(800, 15), color: C.darkGold }}>
                                       {editing
